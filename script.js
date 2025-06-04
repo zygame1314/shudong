@@ -1,16 +1,7 @@
 const fileListElement = document.getElementById('file-list');
-const currentPathElement = document.createElement('div');
-currentPathElement.id = 'current-path';
-currentPathElement.style.marginBottom = '1rem';
-currentPathElement.style.fontWeight = 'bold';
-currentPathElement.style.padding = '0.5rem 0';
-currentPathElement.style.borderBottom = '1px solid #eee';
-if (fileListElement && fileListElement.parentNode) {
-    fileListElement.parentNode.insertBefore(currentPathElement, fileListElement);
-} else {
-    console.error("Could not find file list element or its parent to insert path display.");
-}
-
+const breadcrumbListElement = document.getElementById('breadcrumb-list');
+const searchInput = document.getElementById('search-input');
+const searchButton = document.getElementById('search-button');
 const API_BASE_URL = 'https://shudong.zygame1314.site';
 
 const FILES_API_URL = `${API_BASE_URL}/api/files`;
@@ -18,6 +9,8 @@ const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
 
 let currentPrefix = '';
 let currentPassword = null;
+const directoryCache = {};
+let isShowingSearchResults = false;
 
 function formatBytes(bytes, decimals = 2) {
     if (bytes == null || bytes === 0) return '0 Bytes';
@@ -79,18 +72,242 @@ async function downloadFile(fileKey, password) {
 }
 
 
-async function fetchAndDisplayFiles(prefix = '') {
+function updateBreadcrumb(prefix, isSearch = false, searchTerm = '') {
+    if (!breadcrumbListElement) return;
+    breadcrumbListElement.innerHTML = '';
+
+    if (isSearch) {
+         breadcrumbListElement.style.display = 'none';
+         return;
+    }
+
+    breadcrumbListElement.style.display = '';
+
+    const rootLi = document.createElement('li');
+    rootLi.classList.add('breadcrumb-item');
+    const rootLink = document.createElement('a');
+    rootLink.href = '#';
+    rootLink.textContent = '根目录';
+    rootLink.onclick = (e) => {
+        e.preventDefault();
+        fetchAndDisplayFiles('');
+    };
+    rootLi.appendChild(rootLink);
+    breadcrumbListElement.appendChild(rootLi);
+
+    if (prefix) {
+        const parts = prefix.endsWith('/') ? prefix.slice(0, -1).split('/') : prefix.split('/');
+        let currentPath = '';
+        parts.forEach((part, index) => {
+            currentPath += part + '/';
+            const li = document.createElement('li');
+            li.classList.add('breadcrumb-item');
+            if (index === parts.length - 1) {
+                li.textContent = part;
+                li.setAttribute('aria-current', 'page');
+            } else {
+                const link = document.createElement('a');
+                link.href = '#';
+                link.textContent = part;
+                const pathOnClick = currentPath;
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    fetchAndDisplayFiles(pathOnClick);
+                };
+                li.appendChild(link);
+            }
+            breadcrumbListElement.appendChild(li);
+        });
+    }
+}
+
+
+function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '') {
+    fileListElement.innerHTML = '';
+    const lowerLocalSearchTerm = localSearchTerm.trim().toLowerCase();
+
+    if (isGlobalSearch) {
+        isShowingSearchResults = true;
+        updateBreadcrumb('', true, localSearchTerm);
+        const searchInfoLi = document.createElement('li');
+        searchInfoLi.textContent = `全局搜索 "${localSearchTerm}" 的结果:`;
+        searchInfoLi.classList.add('search-info');
+        fileListElement.appendChild(searchInfoLi);
+
+    } else {
+        isShowingSearchResults = false;
+        updateBreadcrumb(prefix);
+        if (prefix !== '') {
+            let lastSlashIndex = prefix.endsWith('/') ? prefix.lastIndexOf('/', prefix.length - 2) : prefix.lastIndexOf('/');
+            const parentPrefix = lastSlashIndex >= 0 ? prefix.substring(0, lastSlashIndex + 1) : '';
+
+            const backLi = document.createElement('li');
+            backLi.classList.add('directory-item', 'back-button');
+            const backLink = document.createElement('a');
+            backLink.href = '#';
+            backLink.innerHTML = '<span class="icon">⬆️</span> 返回上一级';
+            backLink.onclick = (e) => {
+                e.preventDefault();
+                if (searchInput) searchInput.value = '';
+                fetchAndDisplayFiles(parentPrefix);
+            };
+            backLi.appendChild(backLink);
+            fileListElement.appendChild(backLi);
+        }
+    }
+
+    let displayedDirectories = [];
+    if (!isGlobalSearch && data.directories && data.directories.length > 0) {
+        let filteredDirectories = data.directories;
+        if (lowerLocalSearchTerm) {
+             filteredDirectories = filteredDirectories.filter(dir => dir.name.toLowerCase().includes(lowerLocalSearchTerm));
+        }
+        displayedDirectories = filteredDirectories;
+
+        displayedDirectories.forEach(dir => {
+            const li = document.createElement('li');
+            li.classList.add('directory-item');
+            const dirLink = document.createElement('a');
+            dirLink.href = '#';
+            dirLink.innerHTML = `<span class="icon">📁</span> ${dir.name}`;
+            dirLink.onclick = (e) => {
+                e.preventDefault();
+                if (searchInput) searchInput.value = '';
+                fetchAndDisplayFiles(dir.key);
+            };
+            li.appendChild(dirLink);
+            fileListElement.appendChild(li);
+        });
+    }
+
+    let displayedFiles = [];
+    if (data.files && data.files.length > 0) {
+        let filteredFiles = data.files;
+        if (!isGlobalSearch && lowerLocalSearchTerm) {
+            filteredFiles = filteredFiles.filter(file => file.name.toLowerCase().includes(lowerLocalSearchTerm));
+        }
+        displayedFiles = filteredFiles;
+
+        displayedFiles.forEach(file => {
+            const isDirectoryPlaceholder = file.isDirectoryPlaceholder;
+            const li = document.createElement('li');
+            li.classList.add(isDirectoryPlaceholder ? 'directory-item' : 'file-item');
+
+            let nameElement;
+            const displayName = isGlobalSearch ? file.name : file.name;
+            const displayIcon = isDirectoryPlaceholder ? '📁' : '📄';
+
+            if (isDirectoryPlaceholder) {
+                nameElement = document.createElement('a');
+                nameElement.href = '#';
+                nameElement.innerHTML = `<span class="icon">${displayIcon}</span> ${displayName}`;
+                nameElement.onclick = (e) => {
+                    e.preventDefault();
+                    if (searchInput) searchInput.value = '';
+                    fetchAndDisplayFiles(file.key);
+                };
+            } else {
+                nameElement = document.createElement('span');
+                nameElement.innerHTML = `<span class="icon">${displayIcon}</span> ${displayName}`;
+            }
+            nameElement.style.marginRight = '10px';
+
+
+            const fileSizeSpan = document.createElement('span');
+            if (!isDirectoryPlaceholder) {
+                fileSizeSpan.textContent = `(${formatBytes(file.size)})`;
+                fileSizeSpan.classList.add('file-size');
+            }
+
+            const downloadButton = document.createElement('button');
+            if (!isDirectoryPlaceholder) {
+                downloadButton.textContent = '下载';
+                downloadButton.classList.add('download-button');
+                downloadButton.onclick = () => downloadFile(file.key, currentPassword);
+            }
+
+            const statusSpan = document.createElement('span');
+             if (!isDirectoryPlaceholder) {
+                statusSpan.id = `status-${file.key.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                statusSpan.classList.add('download-status');
+             }
+
+            const infoDiv = document.createElement('div');
+            infoDiv.style.display = 'flex';
+            infoDiv.style.alignItems = 'center';
+            infoDiv.style.flexGrow = '1';
+            infoDiv.appendChild(nameElement);
+            infoDiv.appendChild(fileSizeSpan);
+
+            const actionsDiv = document.createElement('div');
+            if (!isDirectoryPlaceholder) {
+                 actionsDiv.appendChild(downloadButton);
+                 actionsDiv.appendChild(statusSpan);
+            }
+
+
+            li.appendChild(infoDiv);
+            li.appendChild(actionsDiv);
+            fileListElement.appendChild(li);
+        });
+    }
+
+    const hasDisplayedContent = displayedDirectories.length > 0 || displayedFiles.length > 0;
+
+     if (!hasDisplayedContent) {
+         const emptyLi = document.createElement('li');
+         if (isGlobalSearch) {
+             emptyLi.textContent = `找不到包含 "${localSearchTerm}" 的文件或文件夹。`;
+         } else if (lowerLocalSearchTerm) {
+              emptyLi.textContent = `在当前目录中找不到包含 "${localSearchTerm}" 的文件或文件夹。`;
+         } else {
+             emptyLi.textContent = '此目录为空';
+         }
+         emptyLi.style.fontStyle = 'italic';
+         emptyLi.style.color = '#888';
+
+         const firstRealItem = fileListElement.querySelector('.directory-item:not(.back-button), .file-item');
+         if (firstRealItem) {
+             fileListElement.insertBefore(emptyLi, firstRealItem);
+         } else {
+             fileListElement.appendChild(emptyLi);
+         }
+    }
+}
+
+
+async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
     if (!currentPassword) {
         fileListElement.innerHTML = '<li>无法获取文件列表：未获取到验证口令。请先验证。</li>';
-        currentPathElement.textContent = '路径：未验证';
+        updateBreadcrumb('');
+        isShowingSearchResults = false;
         return;
     }
 
-    currentPrefix = prefix;
-    fileListElement.innerHTML = '<li><span class="loading-indicator">正在加载文件列表...</span></li>';
-    currentPathElement.textContent = `当前路径：/${prefix}`;
+    const isGlobal = searchTerm.trim() !== '';
+    if (!isGlobal) {
+        currentPrefix = prefix;
+    }
 
-    const url = `${FILES_API_URL}?prefix=${encodeURIComponent(prefix)}`;
+
+    fileListElement.innerHTML = '<li><span class="loading-indicator">正在加载文件列表...</span></li>';
+
+    let url;
+    if (isGlobal) {
+        console.log(`发起全局搜索: "${searchTerm}"`);
+        url = `${FILES_API_URL}?search=${encodeURIComponent(searchTerm.trim())}`;
+    } else {
+        console.log(`加载目录: "${prefix || '根目录'}"`);
+        url = `${FILES_API_URL}?prefix=${encodeURIComponent(prefix)}`;
+        const localSearchTerm = searchInput ? searchInput.value.trim() : '';
+        if (!localSearchTerm && directoryCache[prefix]) {
+            console.log(`从缓存加载: ${prefix || '根目录'}`);
+            renderFileList(prefix, directoryCache[prefix], false, '');
+            isShowingSearchResults = false;
+            updateBreadcrumb(prefix);
+            return;
+        }
+    }
 
     try {
         const response = await fetch(url, {
@@ -100,106 +317,48 @@ async function fetchAndDisplayFiles(prefix = '') {
             },
         });
 
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error("JSON 解析错误:", jsonError);
+            result = { success: false, error: `无法解析响应: ${response.statusText}` };
+        }
 
         if (response.ok && result.success) {
-            fileListElement.innerHTML = '';
+            const receivedData = {
+                files: result.files || [],
+                directories: result.directories || [],
+            };
+             if (result.files) {
+                 receivedData.files.forEach((file, index) => {
+                     if (result.files[index] && result.files[index].isDirectoryPlaceholder !== undefined) {
+                         file.isDirectoryPlaceholder = result.files[index].isDirectoryPlaceholder;
+                     } else {
+                         file.isDirectoryPlaceholder = false;
+                     }
+                 });
+             }
 
-            if (prefix !== '') {
-                let lastSlashIndex = prefix.endsWith('/') ? prefix.lastIndexOf('/', prefix.length - 2) : prefix.lastIndexOf('/');
-                const parentPrefix = lastSlashIndex >= 0 ? prefix.substring(0, lastSlashIndex + 1) : '';
 
-                const backLi = document.createElement('li');
-                backLi.classList.add('directory-item');
-                const backLink = document.createElement('a');
-                backLink.href = '#';
-                backLink.innerHTML = '<span class="icon">⬆️</span> 返回上一级';
-                backLink.onclick = (e) => {
-                    e.preventDefault();
-                    fetchAndDisplayFiles(parentPrefix);
-                };
-                backLi.appendChild(backLink);
-                fileListElement.appendChild(backLi);
+            if (!isGlobal) {
+                directoryCache[prefix] = { files: receivedData.files, directories: receivedData.directories };
+                console.log(`缓存已更新: ${prefix || '根目录'}`);
             }
-
-            if (result.directories && result.directories.length > 0) {
-                result.directories.forEach(dir => {
-                    const li = document.createElement('li');
-                    li.classList.add('directory-item');
-                    const dirLink = document.createElement('a');
-                    dirLink.href = '#';
-                    dirLink.innerHTML = `<span class="icon">📁</span> ${dir.name}`;
-                    dirLink.onclick = (e) => {
-                        e.preventDefault();
-                        fetchAndDisplayFiles(dir.key);
-                    };
-                    li.appendChild(dirLink);
-                    fileListElement.appendChild(li);
-                });
-            }
-
-            if (result.files && result.files.length > 0) {
-                result.files.forEach(file => {
-                    const li = document.createElement('li');
-                    li.classList.add('file-item');
-
-                    const fileNameSpan = document.createElement('span');
-                    fileNameSpan.innerHTML = `<span class="icon">📄</span> ${file.name}`;
-                    fileNameSpan.style.marginRight = '10px';
-
-                    const fileSizeSpan = document.createElement('span');
-                    fileSizeSpan.textContent = `(${formatBytes(file.size)})`;
-                    fileSizeSpan.classList.add('file-size');
-
-                    const downloadButton = document.createElement('button');
-                    downloadButton.textContent = '下载';
-                    downloadButton.classList.add('download-button');
-                    downloadButton.onclick = () => downloadFile(file.key, currentPassword);
-
-                    const statusSpan = document.createElement('span');
-                    statusSpan.id = `status-${file.key.replace(/[^a-zA-Z0-9]/g, '-')}`;
-                    statusSpan.classList.add('download-status');
-
-                    const fileInfoDiv = document.createElement('div');
-                    fileInfoDiv.style.display = 'flex';
-                    fileInfoDiv.style.alignItems = 'center';
-                    fileInfoDiv.style.flexGrow = '1';
-                    fileInfoDiv.appendChild(fileNameSpan);
-                    fileInfoDiv.appendChild(fileSizeSpan);
-
-                    const actionsDiv = document.createElement('div');
-                    actionsDiv.appendChild(downloadButton);
-                    actionsDiv.appendChild(statusSpan);
-
-
-                    li.appendChild(fileInfoDiv);
-                    li.appendChild(actionsDiv);
-                    fileListElement.appendChild(li);
-                });
-            }
-
-            const hasContent = (result.directories && result.directories.length > 0) || (result.files && result.files.length > 0);
-            if (!hasContent) {
-                 const emptyLi = document.createElement('li');
-                 emptyLi.textContent = '此目录为空';
-                 emptyLi.style.fontStyle = 'italic';
-                 emptyLi.style.color = '#888';
-                 if (fileListElement.firstChild && fileListElement.firstChild.classList.contains('directory-item')) {
-                     fileListElement.insertBefore(emptyLi, fileListElement.firstChild.nextSibling);
-                 } else {
-                     fileListElement.appendChild(emptyLi);
-                 }
-            }
-
+            const currentLocalSearch = searchInput ? searchInput.value.trim() : '';
+            renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : currentLocalSearch);
         } else {
-            console.error("获取文件列表失败:", result);
-            fileListElement.innerHTML = `<li>获取文件列表失败: ${result.error || '未知错误'}</li>`;
-            currentPathElement.textContent = `当前路径：/${prefix} (加载失败)`;
+            const errorMessage = result?.error || `HTTP 错误 ${response.status}`;
+            console.error("获取文件列表失败:", errorMessage, result);
+            fileListElement.innerHTML = `<li>获取文件列表失败: ${errorMessage}</li>`;
+            isShowingSearchResults = isGlobal;
+            updateBreadcrumb(isGlobal ? '' : prefix, isGlobal, searchTerm.trim());
         }
     } catch (error) {
         console.error("获取文件列表请求出错:", error);
         fileListElement.innerHTML = `<li>获取文件列表请求出错: ${error.message}</li>`;
-        currentPathElement.textContent = `当前路径：/${prefix} (请求错误)`;
+        isShowingSearchResults = isGlobal;
+        updateBreadcrumb(isGlobal ? '' : prefix, isGlobal, searchTerm.trim());
     }
 }
 
@@ -211,13 +370,38 @@ document.addEventListener('authSuccess', (event) => {
     } else {
         console.error("验证成功事件未提供密码！");
         fileListElement.innerHTML = '<li>验证出错，无法加载文件。</li>';
-        currentPathElement.textContent = '路径：验证错误';
+        updateBreadcrumb('');
     }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
     fileListElement.innerHTML = '<li>请先完成验证以查看文件。</li>';
-    currentPathElement.textContent = '当前路径：未验证';
+    updateBreadcrumb('');
     currentPassword = null;
     currentPrefix = '';
 });
+
+if (searchButton && searchInput) {
+    const performSearch = () => {
+        const searchTerm = searchInput.value.trim();
+        if (searchTerm) {
+            fetchAndDisplayFiles('', searchTerm);
+        } else {
+            fetchAndDisplayFiles(currentPrefix, '');
+        }
+    };
+
+    searchButton.addEventListener('click', performSearch);
+
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            performSearch();
+        }
+    });
+
+    searchInput.addEventListener('input', () => {
+        if (searchInput.value.trim() === '') {
+             fetchAndDisplayFiles(currentPrefix, '');
+        }
+    });
+}
