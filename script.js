@@ -11,7 +11,7 @@ if (fileListElement && fileListElement.parentNode) {
     console.error("Could not find file list element or its parent to insert path display.");
 }
 
-const API_BASE_URL = 'shudong.zygame1314.site';
+const API_BASE_URL = 'https://shudong.zygame1314.site';
 
 const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;

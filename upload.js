@@ -4,7 +4,7 @@ const passwordInput = document.getElementById('password-input');
 const uploadStatus = document.getElementById('upload-status');
 const authStatusSpan = document.getElementById('auth-status');
 
-const UPLOAD_API_URL = '/api/upload';
+const UPLOAD_API_URL = `${API_BASE_URL}/api/upload`;
 
 function updateUploadPageAuthStatus() {
     if (typeof isUserAuthenticated === 'function' && isUserAuthenticated()) {

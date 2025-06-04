@@ -1,3 +1,17 @@
+const addCorsHeaders = (headers = {}) => {
+  const allowedOrigin = '*';
+  const plainHeaders = headers instanceof Headers ? Object.fromEntries(headers.entries()) : headers;
+  return {
+    ...plainHeaders,
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+    'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length',
+  };
+};
+
+
 function verifyPassword(request, env) {
   const correctPassword = env.AUTH_PASSWORD;
   if (!correctPassword) {
@@ -19,14 +33,14 @@ export async function onRequestGet({ request, env, params }) {
   if (!filename) {
       return new Response(JSON.stringify({ success: false, error: 'Filename missing in URL path.' }), {
           status: 400,
-          headers: { 'Content-Type': 'application/json' },
+          headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
   }
 
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
       status: 401,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 
@@ -35,7 +49,7 @@ export async function onRequestGet({ request, env, params }) {
       console.error("Server config error: R2 binding 'R2_bucket' not found.");
       return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
    }
 
@@ -45,18 +59,20 @@ export async function onRequestGet({ request, env, params }) {
     if (object === null) {
       return new Response(JSON.stringify({ success: false, error: 'File not found.' }), {
         status: 404,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
 
-    const headers = new Headers();
-    object.writeHttpMetadata(headers);
+    const baseHeaders = new Headers();
+    object.writeHttpMetadata(baseHeaders);
     const encodedFilename = encodeURIComponent(filename);
-    headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}; filename="${filename}"`);
-    headers.set('Content-Length', object.size.toString());
+    baseHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}; filename="${filename}"`);
+    baseHeaders.set('Content-Length', object.size.toString());
+
+    const finalHeaders = addCorsHeaders(baseHeaders);
 
     return new Response(object.body, {
-      headers: headers,
+      headers: finalHeaders,
       status: 200,
     });
 
@@ -64,17 +80,25 @@ export async function onRequestGet({ request, env, params }) {
     console.error(`Error fetching file ${filename} from R2:`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to retrieve file.' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 }
 
 export async function onRequest(context) {
-   if (context.request.method !== 'GET') {
-     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
-       status: 405,
-       headers: { 'Content-Type': 'application/json', 'Allow': 'GET' },
-     });
-   }
-   return onRequestGet(context);
+  if (context.request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: addCorsHeaders(),
+    });
+  }
+
+  if (context.request.method === 'GET') {
+    return onRequestGet(context);
+  }
+
+  return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+    status: 405,
+    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, OPTIONS' }),
+  });
 }

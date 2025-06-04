@@ -1,3 +1,14 @@
+const addCorsHeaders = (headers = {}) => {
+  const allowedOrigin = '*';
+  return {
+    ...headers,
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+  };
+};
+
 function verifyPasswordFromFormData(password, env) {
   const correctPassword = env.AUTH_PASSWORD;
   if (!correctPassword) {
@@ -14,7 +25,7 @@ export async function onRequestPost({ request, env }) {
        console.error("Server config error: R2 binding 'R2_bucket' not found.");
        return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
          status: 500,
-         headers: { 'Content-Type': 'application/json' },
+         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
        });
     }
 
@@ -24,7 +35,7 @@ export async function onRequestPost({ request, env }) {
     } catch (e) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid request body. Expected FormData.' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
 
@@ -35,26 +46,26 @@ export async function onRequestPost({ request, env }) {
     if (!file || !(file instanceof File)) {
        return new Response(JSON.stringify({ success: false, error: 'File data is missing or invalid in FormData.' }), {
          status: 400,
-         headers: { 'Content-Type': 'application/json' },
+         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
        });
     }
      if (!filename) {
         return new Response(JSON.stringify({ success: false, error: 'Filename could not be determined.' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json' },
+            headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
         });
      }
     if (!password) {
       return new Response(JSON.stringify({ success: false, error: 'Password is required in FormData.' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
 
     if (!verifyPasswordFromFormData(password, env)) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid password.' }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
 
@@ -70,14 +81,14 @@ export async function onRequestPost({ request, env }) {
       console.log(`Successfully uploaded ${filename} to R2.`);
       return new Response(JSON.stringify({ success: true, filename: filename }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
 
     } catch (r2Error) {
       console.error(`Error uploading ${filename} to R2:`, r2Error);
       return new Response(JSON.stringify({ success: false, error: `Failed to upload file to storage. ${r2Error.message}` }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
 
@@ -85,17 +96,25 @@ export async function onRequestPost({ request, env }) {
     console.error("Upload processing error:", error);
     return new Response(JSON.stringify({ success: false, error: 'An unexpected error occurred during upload.' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 }
 
 export async function onRequest(context) {
-   if (context.request.method !== 'POST') {
-     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
-       status: 405,
-       headers: { 'Content-Type': 'application/json', 'Allow': 'POST' },
-     });
-   }
-   return onRequestPost(context);
+  if (context.request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: addCorsHeaders(),
+    });
+  }
+
+  if (context.request.method === 'POST') {
+    return onRequestPost(context);
+  }
+
+  return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+    status: 405,
+    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'POST, OPTIONS' }),
+  });
 }

@@ -1,3 +1,14 @@
+const addCorsHeaders = (headers = {}) => {
+  const allowedOrigin = '*';
+  return {
+    ...headers,
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+  };
+};
+
 function verifyPassword(request, env) {
   const correctPassword = env.AUTH_PASSWORD;
   if (!correctPassword) {
@@ -18,7 +29,7 @@ export async function onRequestGet({ request, env }) {
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
       status: 401,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 
@@ -27,7 +38,7 @@ export async function onRequestGet({ request, env }) {
      console.error("Server config error: R2 binding 'R2_bucket' not found.");
      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
        status: 500,
-       headers: { 'Content-Type': 'application/json' },
+       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
      });
   }
 
@@ -64,24 +75,32 @@ export async function onRequestGet({ request, env }) {
         directories: directories
     }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
 
   } catch (error) {
     console.error(`Error listing R2 files with prefix "${prefix}":`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to list files.' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 }
 
 export async function onRequest(context) {
-   if (context.request.method !== 'GET') {
-     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
-       status: 405,
-       headers: { 'Content-Type': 'application/json', 'Allow': 'GET' },
-     });
-   }
-   return onRequestGet(context);
+  if (context.request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: addCorsHeaders(),
+    });
+  }
+
+  if (context.request.method === 'GET') {
+    return onRequestGet(context);
+  }
+
+  return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+    status: 405,
+    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, OPTIONS' }),
+  });
 }

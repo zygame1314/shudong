@@ -3,10 +3,7 @@ const loginButton = document.getElementById('login-button');
 const uploadLink = document.getElementById('upload-link');
 const authStatusSpan = document.getElementById('auth-status');
 
-let currentPassword = null;
-let isAuthenticated = false;
-
-const AUTH_API_URL = '/api/auth';
+const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
 
 async function checkAuth() {
     const password = prompt("请输入访问口令：");
