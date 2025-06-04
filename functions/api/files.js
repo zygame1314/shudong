@@ -31,23 +31,44 @@ export async function onRequestGet({ request, env }) {
      });
   }
 
-  try {
-    const listed = await R2_BUCKET.list();
+  const url = new URL(request.url);
+  const prefix = url.searchParams.get('prefix') || '';
 
-    const files = listed.objects.map(obj => ({
-        key: obj.key,
-        size: obj.size,
-        uploaded: obj.uploaded,
+  try {
+    const listOptions = {
+        prefix: prefix,
+        delimiter: '/',
+    };
+
+    const listed = await R2_BUCKET.list(listOptions);
+
+    const files = listed.objects
+        .filter(obj => obj.key !== prefix && !obj.key.endsWith('/'))
+        .map(obj => ({
+            key: obj.key,
+            name: obj.key.substring(prefix.length),
+            size: obj.size,
+            uploaded: obj.uploaded,
+        }));
+
+    const directories = listed.delimitedPrefixes.map(dirPrefix => ({
+        key: dirPrefix,
+        name: dirPrefix.substring(prefix.length).replace(/\/$/, ''),
     }));
 
 
-    return new Response(JSON.stringify({ success: true, files: files }), {
+    return new Response(JSON.stringify({
+        success: true,
+        prefix: prefix,
+        files: files,
+        directories: directories
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error("Error listing R2 files:", error);
+    console.error(`Error listing R2 files with prefix "${prefix}":`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to list files.' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
