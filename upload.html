@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上传文件 - 学习资料共享平台</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>上传文件</h1>
+        <div id="auth-section">
+             <span id="auth-status">状态：未验证</span>
+        </div>
+    </header>
+
+    <main>
+        <section id="upload-section">
+            <h2>选择并上传文件</h2>
+            <form id="upload-form">
+                <label for="file-input">选择文件:</label>
+                <input type="file" id="file-input" name="file" required>
+
+                <label for="password-input">输入验证密码:</label>
+                <input type="password" id="password-input" required placeholder="用于验证上传权限">
+
+                <button type="submit">上传文件</button>
+            </form>
+            <div id="upload-status"></div>
+            <p><a href="index.html">返回文件列表</a></p>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 共享平台</p>
+    </footer>
+
+    <script src="auth.js"></script>
+    <script src="upload.js"></script>
+</body>
+</html>
