@@ -74,9 +74,14 @@ async function getLoginPrerequisites(url, cookieJar, userAgent) {
     let lt = '', execution = '';
     const response = await fetch(url, { headers: { 'User-Agent': userAgent } });
     cookieJar.addFromHeaders(response.headers.getSetCookie(), url);
-    const transformedResponse = new HTMLRewriter() //...
-    await transformedResponse.text();
-    if (!lt || !execution) {  }
+    const transformedStream = new HTMLRewriter()
+        .on('input[name="lt"]', { element(el) { lt = el.getAttribute('value'); } })
+        .on('input[name="execution"]', { element(el) { execution = el.getAttribute('value'); } })
+        .transform(response);
+    await new Response(transformedStream.body).text();
+    if (!lt || !execution) {
+        throw new Error('无法从登录页获取动态表单参数(lt/execution)。');
+    }
     return { lt, execution };
 }
 async function performLoginAndRedirects(url, formData, cookieJar, userAgent) {
@@ -140,7 +145,7 @@ export async function onRequestPost({ request, env }) {
         debugLogs.push("步骤1: 开始获取登录前提条件...");
         const { lt, execution } = await getLoginPrerequisites(loginPageUrl, cookieJar, userAgent);
         debugLogs.push(`获取成功: lt=${lt.substring(0, 10)}..., execution=${execution}`);
-        debugLogs.push(`初始Cookie: ${cookieJar.toHeaderString()}`);
+        debugLogs.push(`初始Cookie: ${cookieJar.toHeaderStringForUrl(loginPageUrl)}`);
         const formData = new URLSearchParams({
             username, password, lt, execution,
             _eventId: 'submit', submit: '登录'
@@ -148,13 +153,13 @@ export async function onRequestPost({ request, env }) {
         debugLogs.push("步骤2: 开始POST登录表单...");
         await performLoginAndRedirects(loginPageUrl, formData, cookieJar, userAgent);
         debugLogs.push("重定向链处理完成。");
-        debugLogs.push(`最终Cookie: ${cookieJar.toHeaderString()}`);
+        debugLogs.push(`最终Cookie: ${JSON.stringify(cookieJar.cookies)}`);
         debugLogs.push("步骤3: 开始验证会话并获取用户信息...");
         const apiUrl = `https://one.ccnu.edu.cn/getLoginUser?_t=${Math.random()}`;
         const userInfoResponse = await fetch(apiUrl, {
             headers: {
                 'User-Agent': userAgent,
-                'Cookie': cookieJar.toHeaderString(),
+                'Cookie': cookieJar.toHeaderStringForUrl(apiUrl),
                 'X-Requested-With': 'XMLHttpRequest',
                 'Referer': 'https://one.ccnu.edu.cn/default/index.html'
             }
