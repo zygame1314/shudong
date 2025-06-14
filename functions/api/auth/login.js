@@ -1,4 +1,4 @@
-import { SignJWT } from 'https://cdn.skypack.dev/jose';
+import { SignJWT } from 'jose';
 class CookieJar {
     constructor() {
         this.cookies = new Map();

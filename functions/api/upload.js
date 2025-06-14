@@ -1,4 +1,4 @@
-import { jwtVerify } from 'https://cdn.skypack.dev/jose';
+import { jwtVerify } from 'jose';
 
 const addCorsHeaders = (headers = {}) => {
   const allowedOrigin = '*';
