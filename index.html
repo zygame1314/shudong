@@ -4,40 +4,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>学习资料共享平台</title>
+    <title>生科树洞 | 学习资料共享平台</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdmirror.com/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
 </head>
 
 <body>
-    <header>
-        <h1>学习资料共享平台</h1>
-        <div id="auth-section">
-            <button id="login-button">登录/验证</button>
+    <div id="particles-background"></div>
+
+    <nav class="top-nav">
+        <div class="nav-container">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <i class="fas fa-tree"></i>
+                </div>
+                <div class="logo-text">
+                    <span class="main-title">生科树洞</span>
+                    <span class="sub-title">永恒的知识传承</span>
+                </div>
+            </div>
+            <div class="nav-actions">
+                <button id="theme-toggle" class="icon-btn" title="切换主题">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <div id="auth-section">
+                    <button id="login-button" class="primary-btn">
+                        <i class="fas fa-user"></i>
+                        <span>口令验证</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero-section">
+        <div class="hero-content">
+            <div class="hero-text">
+                <h1 class="main-heading">
+                    <span class="text-gradient">学习资料共享平台</span>
+                </h1>
+                <p class="hero-description">
+                    承载着"生科树洞"的精神，让知识在这里延续传承
+                </p>
+                <div class="memory-badge">
+                    <i class="fas fa-heart"></i>
+                    <span>纪念那些美好的时光</span>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="floating-elements">
+                    <div class="element element-1"><i class="fas fa-dna"></i></div>
+                    <div class="element element-2"><i class="fas fa-microscope"></i></div>
+                    <div class="element element-3"><i class="fas fa-leaf"></i></div>
+                    <div class="element element-4"><i class="fas fa-atom"></i></div>
+                </div>
+            </div>
         </div>
     </header>
 
-    <main>
-        <section id="file-list-section">
-            <h2>文件列表</h2>
-<div id="search-section">
-                <input type="search" id="search-input" placeholder="搜索文件...">
-                <button id="search-button">搜索</button>
-            </div>
-            <nav id="breadcrumb-nav" aria-label="breadcrumb">
-                <ol id="breadcrumb-list">
-                </ol>
-            </nav>
-            <ul id="file-list">
-                <li>加载中...</li>
-            </ul>
-            <a href="upload.html" id="upload-link" style="display: none;">上传文件</a>
-        </section>
+    <main class="main-content">
+        <div class="container">
+            <section id="file-explorer" class="file-explorer">
+                <div class="explorer-header">
+                    <div class="header-left">
+                        <h2 class="section-title">
+                            <i class="fas fa-folder-open"></i>
+                            文件资源库
+                        </h2>
+                        <div class="file-stats">
+                            <span id="file-count">正在统计...</span>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <div class="view-options">
+                            <button class="view-btn active" data-view="list" title="列表视图">
+                                <i class="fas fa-list"></i>
+                            </button>
+                            <button class="view-btn" data-view="grid" title="网格视图">
+                                <i class="fas fa-th"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="search-container">
+                    <div class="search-box">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="search" id="search-input" placeholder="搜索文件、文档、资料...">
+                        <button id="search-button" class="search-btn">
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+                    <div class="search-filters">
+                        <button class="filter-btn active" data-filter="all">全部</button>
+                        <button class="filter-btn" data-filter="pdf">PDF</button>
+                        <button class="filter-btn" data-filter="doc">文档</button>
+                        <button class="filter-btn" data-filter="image">图片</button>
+                        <button class="filter-btn" data-filter="video">视频</button>
+                    </div>
+                </div>
+
+                <nav id="breadcrumb-nav" class="breadcrumb-nav" aria-label="breadcrumb">
+                    <div class="breadcrumb-container">
+                        <i class="fas fa-home breadcrumb-home"></i>
+                        <ol id="breadcrumb-list" class="breadcrumb-list">
+                        </ol>
+                    </div>
+                </nav>
+
+                <div class="file-list-container">
+                    <ul id="file-list" class="file-list">
+                        <li class="loading-item">
+                            <div class="loading-spinner"></div>
+                            <span>正在加载文件列表...</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="upload-section">
+                    <a href="upload.html" id="upload-link" class="upload-btn" style="display: none;">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>上传资料</span>
+                    </a>
+                </div>
+            </section>
+        </div>
     </main>
 
-    <footer>
-        <p>&copy; 2025 共享平台</p>
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>关于生科树洞</h3>
+                <p>一个充满回忆的学习社区，虽然群已不在，但知识永恒传承。</p>
+            </div>
+            <div class="footer-section">
+                <h3>使用指南</h3>
+                <ul>
+                    <li><a href="#">如何上传文件</a></li>
+                    <li><a href="#">搜索技巧</a></li>
+                    <li><a href="#">分享规范</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h3>联系我们</h3>
+                <div class="social-links">
+                    <a href="#" class="social-link"><i class="fab fa-github"></i></a>
+                    <a href="#" class="social-link"><i class="fas fa-envelope"></i></a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 生科树洞学习资料共享平台 | 知识传承，永不止步</p>
+        </div>
     </footer>
-    
+
     <script src="script.js"></script>
     <script src="auth.js"></script>
 </body>

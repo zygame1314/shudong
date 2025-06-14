@@ -22,11 +22,11 @@ export async function onRequestPost({ request, env }) {
   try {
     const R2_BUCKET = env.R2_bucket;
     if (!R2_BUCKET) {
-       console.error("Server config error: R2 binding 'R2_bucket' not found.");
-       return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
-         status: 500,
-         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-       });
+      console.error("Server config error: R2 binding 'R2_bucket' not found.");
+      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
     }
 
     let formData;
@@ -44,17 +44,17 @@ export async function onRequestPost({ request, env }) {
     const filename = file?.name;
 
     if (!file || !(file instanceof File)) {
-       return new Response(JSON.stringify({ success: false, error: 'File data is missing or invalid in FormData.' }), {
-         status: 400,
-         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-       });
+      return new Response(JSON.stringify({ success: false, error: 'File data is missing or invalid in FormData.' }), {
+        status: 400,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
     }
-     if (!filename) {
-        return new Response(JSON.stringify({ success: false, error: 'Filename could not be determined.' }), {
-            status: 400,
-            headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-        });
-     }
+    if (!filename) {
+      return new Response(JSON.stringify({ success: false, error: 'Filename could not be determined.' }), {
+        status: 400,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
     if (!password) {
       return new Response(JSON.stringify({ success: false, error: 'Password is required in FormData.' }), {
         status: 400,
@@ -71,11 +71,11 @@ export async function onRequestPost({ request, env }) {
 
     try {
       const uploadedObject = await R2_BUCKET.put(filename, await file.arrayBuffer(), {
-          httpMetadata: { contentType: file.type },
+        httpMetadata: { contentType: file.type },
       });
 
       if (!uploadedObject) {
-          console.warn(`R2 put for ${filename} returned:`, uploadedObject);
+        console.warn(`R2 put for ${filename} returned:`, uploadedObject);
       }
 
       console.log(`Successfully uploaded ${filename} to R2.`);

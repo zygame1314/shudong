@@ -31,10 +31,10 @@ function verifyPassword(request, env) {
 export async function onRequestGet({ request, env, params }) {
   const filename = decodeURIComponent(params.filename);
   if (!filename) {
-      return new Response(JSON.stringify({ success: false, error: 'Filename missing in URL path.' }), {
-          status: 400,
-          headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-      });
+    return new Response(JSON.stringify({ success: false, error: 'Filename missing in URL path.' }), {
+      status: 400,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
   }
 
   if (!verifyPassword(request, env)) {
@@ -45,13 +45,13 @@ export async function onRequestGet({ request, env, params }) {
   }
 
   const R2_BUCKET = env.R2_bucket;
-   if (!R2_BUCKET) {
-      console.error("Server config error: R2 binding 'R2_bucket' not found.");
-      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
-        status: 500,
-        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-      });
-   }
+  if (!R2_BUCKET) {
+    console.error("Server config error: R2 binding 'R2_bucket' not found.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
 
   try {
     const object = await R2_BUCKET.get(filename);

@@ -1,41 +1,198 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>上传文件 - 学习资料共享平台</title>
+    <title>上传文件 - 生科树洞 | 学习资料共享平台</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdmirror.com/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
 </head>
+
 <body>
-    <header>
-        <h1>上传文件</h1>
-        <div id="auth-section">
-             <span id="auth-status">状态：未验证</span>
+    <div id="particles-background"></div>
+
+    <nav class="top-nav">
+        <div class="nav-container">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <i class="fas fa-tree"></i>
+                </div>
+                <div class="logo-text">
+                    <span class="main-title">生科树洞</span>
+                    <span class="sub-title">知识上传</span>
+                </div>
+            </div>
+            <div class="nav-actions">
+                <button id="theme-toggle" class="icon-btn" title="切换主题">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <a href="index.html" class="primary-btn">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>返回首页</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero-section upload-hero">
+        <div class="hero-content">
+            <div class="hero-text">
+                <h1 class="main-heading">
+                    <i class="fas fa-cloud-upload-alt" style="margin-right: 1rem; color: var(--primary-color);"></i>
+                    <span class="text-gradient">文件上传</span>
+                </h1>
+                <p class="hero-description">
+                    分享您的知识，让学习资源在这里传承
+                </p>
+                <div class="upload-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-users"></i>
+                        <span>服务学习者</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-heart"></i>
+                        <span>传承知识</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-infinity"></i>
+                        <span>永不止步</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </header>
 
-    <main>
-        <section id="upload-section">
-            <h2>选择并上传文件</h2>
-            <form id="upload-form">
-                <label for="file-input">选择文件:</label>
-                <input type="file" id="file-input" name="file" required>
+    <main class="main-content">
+        <div class="container">
+            <section class="upload-container">
+                <div class="upload-card">
+                    <div class="upload-header">
+                        <h2 class="section-title">
+                            <i class="fas fa-file-upload"></i>
+                            上传学习资料
+                        </h2>
+                        <p class="upload-description">
+                            支持各种格式的学习资料，包括PDF、DOC、PPT、图片等
+                        </p>
+                    </div>
 
-                <label for="password-input">输入验证密码:</label>
-                <input type="password" id="password-input" required placeholder="用于验证上传权限">
+                    <form id="upload-form" class="upload-form">
+                        <div class="file-drop-zone" id="file-drop-zone">
+                            <div class="drop-zone-content">
+                                <div class="drop-zone-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <div class="drop-zone-text">
+                                    <h3>拖拽文件到此处</h3>
+                                    <p>或者 <span class="browse-text">点击选择文件</span></p>
+                                </div>
+                                <div class="file-types">
+                                    <span>支持: PDF, DOC, PPT, XLS, 图片, 视频等</span>
+                                </div>
+                            </div>
+                            <input type="file" id="file-input" name="file" required hidden>
+                        </div>
 
-                <button type="submit">上传文件</button>
-            </form>
-            <div id="upload-status"></div>
-            <p><a href="index.html">返回文件列表</a></p>
-        </section>
+                        <div id="selected-file-info" class="selected-file-info" style="display: none;">
+                            <div class="file-preview">
+                                <div class="file-icon-preview">
+                                    <i class="fas fa-file"></i>
+                                </div>
+                                <div class="file-details">
+                                    <div class="file-name"></div>
+                                    <div class="file-size"></div>
+                                </div>
+                                <button type="button" class="remove-file-btn" id="remove-file-btn">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password-input" class="form-label">
+                                <i class="fas fa-key"></i>
+                                验证密码
+                            </label>
+                            <div class="password-input-container">
+                                <input type="password" id="password-input" class="form-input" required
+                                    placeholder="请输入上传验证密码">
+                                <button type="button" class="password-toggle" id="password-toggle">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                需要有效的验证密码才能上传文件
+                            </div>
+                        </div>
+
+                        <div id="upload-progress" class="upload-progress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-fill"></div>
+                            </div>
+                            <div class="progress-text">
+                                <span id="progress-percentage">0%</span>
+                                <span id="progress-status">准备上传...</span>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="upload-submit-btn" id="upload-submit-btn">
+                            <i class="fas fa-upload"></i>
+                            <span>开始上传</span>
+                        </button>
+                    </form>
+
+                    <div id="upload-status" class="upload-status"></div>
+                </div>
+
+                <div class="upload-guide">
+                    <h3><i class="fas fa-lightbulb"></i> 上传指南</h3>
+                    <ul>
+                        <li><i class="fas fa-check"></i> 支持单个文件最大 100MB</li>
+                        <li><i class="fas fa-check"></i> 支持常见文档格式：PDF、DOC、PPT、XLS等</li>
+                        <li><i class="fas fa-check"></i> 支持图片格式：JPG、PNG、GIF等</li>
+                        <li><i class="fas fa-check"></i> 支持视频格式：MP4、AVI、MOV等</li>
+                        <li><i class="fas fa-shield-alt"></i> 所有文件将进行安全检查</li>
+                        <li><i class="fas fa-users"></i> 上传的资料将帮助更多学习者</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
     </main>
 
-    <footer>
-        <p>&copy; 2025 共享平台</p>
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>关于上传</h3>
+                <p>感谢您为学习社区贡献宝贵的资料，让知识的传承永不止步。</p>
+            </div>
+            <div class="footer-section">
+                <h3>上传须知</h3>
+                <ul>
+                    <li><a href="#">文件格式说明</a></li>
+                    <li><a href="#">版权声明</a></li>
+                    <li><a href="#">社区规范</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h3>技术支持</h3>
+                <div class="social-links">
+                    <a href="#" class="social-link"><i class="fab fa-github"></i></a>
+                    <a href="#" class="social-link"><i class="fas fa-envelope"></i></a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 生科树洞学习资料共享平台 | 知识传承，永不止步</p>
+        </div>
     </footer>
 
+    <script>
+        const API_BASE_URL = 'https://shudong.zygame1314.site';
+    </script>
     <script src="auth.js"></script>
     <script src="upload.js"></script>
 </body>
+
 </html>
