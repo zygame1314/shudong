@@ -15,10 +15,11 @@ class CookieJar {
     constructor() {
         this.cookies = new Map();
     }
-    addFromHeaders(setCookieHeader) {
-        if (!setCookieHeader) return;
-        const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : setCookieHeader.split(/, (?=[^;]+=[^;]+;)/);
-        cookies.forEach(cookieString => {
+
+    addFromHeaders(setCookieArray) {
+        if (!setCookieArray || setCookieArray.length === 0) return;
+        
+        setCookieArray.forEach(cookieString => {
             const parts = cookieString.split(';')[0].split('=');
             if (parts.length >= 2 && parts[0] && parts[1]) {
                 this.cookies.set(parts[0].trim(), parts[1].trim());
