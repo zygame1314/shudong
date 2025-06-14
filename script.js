@@ -225,50 +225,63 @@ async function deleteFile(key, isDirectory) {
         console.log('删除操作处理完毕:', error.message);
         }
     }
-    async function previewFile(fileKey, fileName) {
+    async function previewFile(fileKey, fileName, fileSize) {
+        if (fileSize > 2 * 1024 * 1024) {
+            showNotification('文件超过2MB，不支持预览。', 'info');
+            return;
+        }
         const extension = fileName.split('.').pop().toLowerCase();
         const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
         const password = getAuthPassword();
-    
         if (!password) {
             showNotification("无法预览：未获取到验证口令。", 'error');
             return;
         }
-    
         let previewUrl;
-    
         try {
-            if (extension === 'pdf') {
-                // For PDF, we can try to get a signed URL as well for consistency, or use direct download link if it works.
-                // Let's use a signed URL for PDFs too, to be safe with potential browser restrictions.
+            let isImagePreview = imageExtensions.includes(extension);
+            previewIframe.style.display = 'none';
+            const existingImage = previewModal.querySelector('.preview-image');
+            if (existingImage) {
+                existingImage.remove();
+            }
+            if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
                 const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
                     headers: { 'Authorization': `Bearer ${password}` }
                 });
                 const data = await response.json();
                 if (!response.ok || !data.success) {
-                    throw new Error(data.error || '无法获取PDF预览链接');
+                    throw new Error(data.error || '无法获取文件预览链接');
                 }
                 previewUrl = data.url;
-    
-            } else if (officeExtensions.includes(extension)) {
-                const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
-                    headers: { 'Authorization': `Bearer ${password}` }
-                });
-                const data = await response.json();
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || '无法获取Office文件预览链接');
+                if (isImagePreview) {
+                    const img = document.createElement('img');
+                    img.src = previewUrl;
+                    img.className = 'preview-image';
+                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: auto;';
+                    previewIframe.parentElement.appendChild(img);
+                } else if (officeExtensions.includes(extension)) {
+                    const xdocinBaseUrl = "https://view.xdocin.com/view";
+                    const params = new URLSearchParams({
+                        src: previewUrl,
+                        title: fileName,
+                        printable: 'false',
+                        copyable: 'false',
+                        watermark: '生科树洞'
+                    });
+                    previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
+                    previewIframe.style.display = 'block';
+                } else {
+                    previewIframe.src = previewUrl;
+                    previewIframe.style.display = 'block';
                 }
-                // Now use the signed URL with Microsoft's viewer
-                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(data.url)}`;
-            
             } else {
                 showNotification('该文件类型不支持预览。', 'info');
                 return;
             }
-    
-            if (previewModal && previewIframe && previewTitle) {
+            if (previewModal && previewTitle) {
                 previewTitle.textContent = `预览: ${fileName}`;
-                previewIframe.src = previewUrl;
                 previewModal.classList.add('visible');
             }
         } catch (error) {
@@ -392,10 +405,16 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
         </div>
         <div class="file-actions">
             ${!isDirectory ? `
-                <button class="preview-button" onclick="previewFile('${item.key}', '${item.name}')">
-                    <i class="fas fa-eye"></i>
-                    预览
-                </button>
+                ${item.size > 2 * 1024 * 1024
+                    ? `<button class="preview-button" disabled title="文件超过2MB，不支持预览">
+                           <i class="fas fa-eye-slash"></i>
+                           预览
+                       </button>`
+                    : `<button class="preview-button" onclick="previewFile('${item.key}', '${item.name}', ${item.size})">
+                           <i class="fas fa-eye"></i>
+                           预览
+                       </button>`
+                }
                 <button class="download-button" onclick="downloadFile('${item.key}')">
                     <i class="fas fa-download"></i>
                     下载
@@ -662,14 +681,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     if (closePreviewBtn && previewModal) {
-        closePreviewBtn.addEventListener('click', () => {
+        const closeAndCleanup = () => {
             previewModal.classList.remove('visible');
             previewIframe.src = '';
-        });
+            const existingImage = previewModal.querySelector('.preview-image');
+            if (existingImage) {
+                existingImage.remove();
+            }
+        };
+        closePreviewBtn.addEventListener('click', closeAndCleanup);
         previewModal.addEventListener('click', (e) => {
             if (e.target === previewModal) {
-                previewModal.classList.remove('visible');
-                previewIframe.src = '';
+                closeAndCleanup();
             }
         });
     }

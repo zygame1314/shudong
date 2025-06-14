@@ -21,9 +21,11 @@ function verifyPasswordFromFormData(password, env) {
 export async function onRequestPost({ request, env }) {
   try {
     const R2_BUCKET = env.R2_bucket;
-    if (!R2_BUCKET) {
-      console.error("Server config error: R2 binding 'R2_bucket' not found.");
-      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
+    const DB = env.DB;
+
+    if (!R2_BUCKET || !DB) {
+      console.error("Server config error: R2 or D1 binding not found.");
+      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 or D1 binding).' }), {
         status: 500,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
@@ -79,6 +81,19 @@ export async function onRequestPost({ request, env }) {
       }
 
       console.log(`Successfully uploaded ${filename} to R2.`);
+
+      try {
+        const stmt = DB.prepare(
+          'INSERT INTO files (key, name, size, uploaded, contentType) VALUES (?, ?, ?, ?, ?)'
+        );
+        await stmt.bind(filename, filename, file.size, new Date().toISOString(), file.type).run();
+        console.log(`Successfully inserted metadata for ${filename} into D1.`);
+      } catch (dbError) {
+        console.error(`Error inserting metadata for ${filename} into D1:`, dbError);
+        // Even if DB insert fails, we don't fail the whole upload, but we should log it.
+        // Depending on requirements, you might want to delete the R2 object here.
+      }
+
       return new Response(JSON.stringify({ success: true, filename: filename }), {
         status: 200,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),

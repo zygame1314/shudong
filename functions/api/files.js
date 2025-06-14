@@ -28,10 +28,10 @@ export async function onRequestGet({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
-  const R2_BUCKET = env.R2_bucket;
-  if (!R2_BUCKET) {
-    console.error("Server config error: R2 binding 'R2_bucket' not found.");
-    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
+  const DB = env.DB;
+  if (!DB) {
+    console.error("Server config error: D1 binding 'DB' not found.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (D1 binding).' }), {
       status: 500,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
@@ -43,75 +43,49 @@ export async function onRequestGet({ request, env }) {
     let files = [];
     let directories = [];
     let isGlobalSearch = false;
+
     if (searchTerm) {
       isGlobalSearch = true;
       console.log(`Performing global search for: "${searchTerm}"`);
-      const listOptions = {
-      };
-      let listed;
-      let truncated = true;
-      let cursor = undefined;
-      const allObjects = [];
-      while (truncated) {
-        listed = await R2_BUCKET.list({ ...listOptions, cursor: cursor });
-        allObjects.push(...listed.objects);
-        truncated = listed.truncated;
-        cursor = listed.truncated ? listed.cursor : undefined;
-      }
-      console.log(`Found ${allObjects.length} total objects during global search.`);
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      allObjects.forEach(obj => {
-        const parts = obj.key.split('/');
-        let namePart = '';
-        if (obj.key.endsWith('/')) {
-          namePart = parts[parts.length - 2];
-        } else {
-          namePart = parts[parts.length - 1];
-        }
-        if (namePart && namePart.toLowerCase().includes(lowerSearchTerm)) {
-          files.push({
-            key: obj.key,
-            name: obj.key,
-            size: obj.size,
-            uploaded: obj.uploaded,
-            isSearchResult: true,
-            isDirectoryPlaceholder: obj.key.endsWith('/')
-          });
-        }
-      });
-      console.log(`Found ${files.length} matching files/objects for search term "${searchTerm}".`);
+      const stmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE name LIKE ?');
+      const { results } = await stmt.bind(`%${searchTerm}%`).all();
+      files = results.map(row => ({ ...row, isSearchResult: true }));
     } else {
       console.log(`Listing files for prefix: "${prefix}"`);
-      const listOptions = {
-        prefix: prefix,
-        delimiter: '/',
-      };
-      const listed = await R2_BUCKET.list(listOptions);
-      files = listed.objects
-        .filter(obj => obj.key !== prefix && !obj.key.endsWith('/'))
-        .map(obj => ({
-          key: obj.key,
-          name: obj.key.substring(prefix.length),
-          size: obj.size,
-          uploaded: obj.uploaded,
-        }));
-      directories = listed.delimitedPrefixes.map(dirPrefix => ({
-        key: dirPrefix,
-        name: dirPrefix.substring(prefix.length).replace(/\/$/, ''),
+      const stmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE key LIKE ?');
+      const { results } = await stmt.bind(`${prefix}%`).all();
+      
+      const directorySet = new Set();
+      const prefixLength = prefix.length;
+
+      files = results
+        .map(row => {
+          const path = row.key.substring(prefixLength);
+          const parts = path.split('/');
+          if (parts.length > 1) {
+            // It's in a subdirectory
+            const dirName = parts[0];
+            directorySet.add(dirName);
+            return null; // Don't list files in subdirectories directly
+          }
+          return {
+            key: row.key,
+            name: path,
+            size: row.size,
+            uploaded: row.uploaded,
+          };
+        })
+        .filter(Boolean);
+
+      directories = Array.from(directorySet).map(dirName => ({
+        key: `${prefix}${dirName}/`,
+        name: dirName,
       }));
     }
+
     directories.sort((a, b) => a.name.localeCompare(b.name));
-    files.sort((a, b) => {
-      if (isGlobalSearch) {
-        const aIsDir = a.isDirectoryPlaceholder;
-        const bIsDir = b.isDirectoryPlaceholder;
-        if (aIsDir && !bIsDir) return -1;
-        if (!aIsDir && bIsDir) return 1;
-        return a.key.localeCompare(b.key);
-      } else {
-        return a.name.localeCompare(b.name);
-      }
-    });
+    files.sort((a, b) => a.name.localeCompare(b.name));
+
     return new Response(JSON.stringify({
       success: true,
       prefix: isGlobalSearch ? '' : prefix,
@@ -124,10 +98,10 @@ export async function onRequestGet({ request, env }) {
     });
   } catch (error) {
     const errorContext = searchTerm ? `global search for "${searchTerm}"` : `prefix "${prefix}"`;
-    console.error(`Error listing R2 files during ${errorContext}:`, error);
+    console.error(`Error listing files from D1 during ${errorContext}:`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to list files.' }), {
       status: 500,
-      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      headers: addCorsHeaders({ 'Content-T ype': 'application/json' }),
     });
   }
 }
@@ -169,9 +143,10 @@ export async function onRequestDelete({ request, env }) {
     });
   }
   const R2_BUCKET = env.R2_bucket;
-  if (!R2_BUCKET) {
-    console.error("Server config error: R2 binding 'R2_bucket' not found.");
-    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 binding).' }), {
+  const DB = env.DB;
+  if (!R2_BUCKET || !DB) {
+    console.error("Server config error: R2 or D1 binding not found.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 or D1 binding).' }), {
       status: 500,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
@@ -183,9 +158,15 @@ export async function onRequestDelete({ request, env }) {
       const keysToDelete = list.objects.map(obj => obj.key);
       if (keysToDelete.length > 0) {
         await R2_BUCKET.delete(keysToDelete);
+        const stmt = DB.prepare('DELETE FROM files WHERE key LIKE ?');
+        await stmt.bind(`${key}%`).run();
+        console.log(`Successfully deleted directory ${key} from D1.`);
       }
     } else {
       await R2_BUCKET.delete(key);
+      const stmt = DB.prepare('DELETE FROM files WHERE key = ?');
+      await stmt.bind(key).run();
+      console.log(`Successfully deleted ${key} from D1.`);
     }
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
