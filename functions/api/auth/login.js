@@ -85,34 +85,39 @@ async function getLoginPrerequisites(url, cookieJar, userAgent) {
     return { lt, execution };
 }
 async function performLoginAndRedirects(url, formData, cookieJar, userAgent) {
-    const postResponse = await fetch(url, {
+    let currentUrl = url;
+    const postResponse = await fetch(currentUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': userAgent,
-            'Cookie': cookieJar.toHeaderStringForUrl(url),
-            'Referer': url
+            'Cookie': cookieJar.toHeaderStringForUrl(currentUrl),
+            'Referer': currentUrl
         },
         body: formData.toString(),
         redirect: 'manual'
     });
     if (postResponse.status !== 302) { throw new Error('学号或密码错误。'); }
-    cookieJar.addFromHeaders(postResponse.headers.getSetCookie(), url);
+    cookieJar.addFromHeaders(postResponse.headers.getSetCookie(), currentUrl);
     let nextUrl = postResponse.headers.get('location');
+    if (!nextUrl) throw new Error('登录后重定向缺少Location头。');
     for (let i = 0; i < 10; i++) {
-        const redirectResponse = await fetch(nextUrl, {
+        const referer = currentUrl;
+        currentUrl = nextUrl;
+        const redirectResponse = await fetch(currentUrl, {
             headers: {
                 'User-Agent': userAgent,
-                'Cookie': cookieJar.toHeaderStringForUrl(nextUrl)
+                'Cookie': cookieJar.toHeaderStringForUrl(currentUrl),
+                'Referer': referer
             },
             redirect: 'manual'
         });
-        cookieJar.addFromHeaders(redirectResponse.headers.getSetCookie(), nextUrl);
+        cookieJar.addFromHeaders(redirectResponse.headers.getSetCookie(), currentUrl);
         if (redirectResponse.status >= 200 && redirectResponse.status < 300) break;
         if (redirectResponse.status >= 301 && redirectResponse.status <= 303) {
             const location = redirectResponse.headers.get('location');
             if (!location) throw new Error('重定向缺少Location头。');
-            nextUrl = new URL(location, redirectResponse.url).toString();
+            nextUrl = new URL(location, currentUrl).toString();
         } else {
             throw new Error(`重定向链中断，状态码: ${redirectResponse.status}`);
         }
