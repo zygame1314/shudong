@@ -37,13 +37,35 @@ export async function onRequestGet({ request, env }) {
     });
   }
   const url = new URL(request.url);
+  const action = url.searchParams.get('action');
+  if (action === 'stats') {
+    try {
+      const stmt = DB.prepare('SELECT COUNT(*) as fileCount, SUM(size) as totalSize FROM files');
+      const stats = await stmt.first();
+      return new Response(JSON.stringify({
+        success: true,
+        stats: {
+          fileCount: stats.fileCount || 0,
+          totalSize: stats.totalSize || 0,
+        }
+      }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    } catch (error) {
+      console.error('Error fetching file stats from D1:', error);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to fetch file statistics.' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+  }
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
   try {
     let files = [];
     let directories = [];
     let isGlobalSearch = false;
-
     if (searchTerm) {
       isGlobalSearch = true;
       console.log(`Performing global search for: "${searchTerm}"`);
@@ -54,19 +76,16 @@ export async function onRequestGet({ request, env }) {
       console.log(`Listing files for prefix: "${prefix}"`);
       const stmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE key LIKE ?');
       const { results } = await stmt.bind(`${prefix}%`).all();
-      
       const directorySet = new Set();
       const prefixLength = prefix.length;
-
       files = results
         .map(row => {
           const path = row.key.substring(prefixLength);
           const parts = path.split('/');
           if (parts.length > 1) {
-            // It's in a subdirectory
             const dirName = parts[0];
             directorySet.add(dirName);
-            return null; // Don't list files in subdirectories directly
+            return null;
           }
           return {
             key: row.key,
@@ -76,16 +95,13 @@ export async function onRequestGet({ request, env }) {
           };
         })
         .filter(Boolean);
-
       directories = Array.from(directorySet).map(dirName => ({
         key: `${prefix}${dirName}/`,
         name: dirName,
       }));
     }
-
     directories.sort((a, b) => a.name.localeCompare(b.name));
     files.sort((a, b) => a.name.localeCompare(b.name));
-
     return new Response(JSON.stringify({
       success: true,
       prefix: isGlobalSearch ? '' : prefix,

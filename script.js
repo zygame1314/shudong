@@ -4,6 +4,7 @@ const searchInput = document.getElementById('search-input');
 const searchButton = document.getElementById('search-button');
 const themeToggle = document.getElementById('theme-toggle');
 const fileCountElement = document.getElementById('file-count');
+const totalSizeElement = document.getElementById('total-size');
 const viewButtons = document.querySelectorAll('.view-btn');
 const filterButtons = document.querySelectorAll('.filter-btn');
 const fileListContainer = document.querySelector('.file-list-container');
@@ -78,7 +79,6 @@ function formatDate(dateString) {
     const date = new Date(dateString);
     const now = new Date();
     const seconds = Math.floor((now - date) / 1000);
-
     let interval = seconds / 31536000;
     if (interval > 1) {
         return Math.floor(interval) + " 年前";
@@ -148,6 +148,36 @@ function getFileType(fileName) {
         'mov': 'video'
     };
     return typeMap[ext] || 'default';
+}
+async function fetchFileStats() {
+    const password = getAuthPassword();
+    if (!password) {
+        if (fileCountElement) fileCountElement.textContent = '验证后可用';
+        return;
+    }
+    try {
+        const response = await fetch(`${FILES_API_URL}?action=stats`, {
+            headers: { 'Authorization': `Bearer ${password}` }
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            const { fileCount, totalSize } = result.stats;
+            if (fileCountElement) {
+                fileCountElement.textContent = `${fileCount} 个文件`;
+            }
+            if (totalSizeElement) {
+                totalSizeElement.textContent = formatBytes(totalSize);
+                const divider = document.querySelector('.stat-divider');
+                if (divider) divider.style.display = 'inline';
+            }
+        } else {
+            if (fileCountElement) fileCountElement.textContent = '统计失败';
+            console.error('获取统计信息失败:', result.error);
+        }
+    } catch (error) {
+        if (fileCountElement) fileCountElement.textContent = '统计出错';
+        console.error('请求统计信息出错:', error);
+    }
 }
 async function downloadFile(fileKey) {
     const password = getAuthPassword();
@@ -266,9 +296,7 @@ async function deleteFile(key, isDirectory) {
             showNotification("无法预览：未获取到验证口令。", 'error');
             return;
         }
-
         const previewLoader = previewModal.querySelector('.preview-loader');
-        
         previewTitle.textContent = `预览: ${fileName}`;
         previewModal.classList.add('visible');
         previewLoader.style.display = 'flex';
@@ -277,7 +305,6 @@ async function deleteFile(key, isDirectory) {
         if (existingImage) {
             existingImage.remove();
         }
-
         try {
             let isImagePreview = imageExtensions.includes(extension);
             if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
@@ -289,11 +316,9 @@ async function deleteFile(key, isDirectory) {
                     throw new Error(data.error || '无法获取文件预览链接');
                 }
                 const previewUrl = data.url;
-
                 const hideLoader = () => {
                     previewLoader.style.display = 'none';
                 };
-
                 if (isImagePreview) {
                     const img = document.createElement('img');
                     img.src = previewUrl;
@@ -314,7 +339,6 @@ async function deleteFile(key, isDirectory) {
                         hideLoader();
                         showNotification('预览加载失败', 'error');
                     };
-
                     if (officeExtensions.includes(extension)) {
                         const xdocinBaseUrl = "https://view.xdocin.com/view";
                         const params = new URLSearchParams({
@@ -420,23 +444,6 @@ function updateBreadcrumb(prefix, isSearch = false, searchTerm = '') {
             }
             breadcrumbListElement.appendChild(li);
         });
-    }
-}
-function updateFileStats(files, directories) {
-    if (fileCountElement) {
-        const totalFiles = files ? files.length : 0;
-        const totalDirs = directories ? directories.length : 0;
-        const totalItems = totalFiles + totalDirs;
-        let statsText = '';
-        if (totalItems === 0) {
-            statsText = '空文件夹';
-        } else {
-            const parts = [];
-            if (totalDirs > 0) parts.push(`${totalDirs} 个文件夹`);
-            if (totalFiles > 0) parts.push(`${totalFiles} 个文件`);
-            statsText = parts.join(', ');
-        }
-        fileCountElement.textContent = statsText;
     }
 }
 function createFileListItem(item, isDirectory, isGlobalSearch = false) {
@@ -568,7 +575,6 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
             }
         });
     }
-    updateFileStats(displayedFiles, displayedDirectories);
     const hasDisplayedContent = displayedDirectories.length > 0 || displayedFiles.length > 0;
     if (!hasDisplayedContent) {
         const emptyLi = document.createElement('li');
@@ -695,10 +701,12 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
 document.addEventListener('authSuccess', () => {
     console.log("验证成功 (authSuccess event received)，开始加载根目录文件列表...");
     fetchAndDisplayFiles('');
+    fetchFileStats();
 });
 document.addEventListener('authRestored', () => {
     console.log("从 localStorage 恢复验证状态 (authRestored event received)，开始加载根目录文件列表...");
     fetchAndDisplayFiles('');
+    fetchFileStats();
 });
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
