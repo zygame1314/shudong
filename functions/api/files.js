@@ -137,9 +137,9 @@ export async function onRequestDelete({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
-  const { key, adminPassword } = payload;
-  if (!key || !adminPassword) {
-    return new Response(JSON.stringify({ success: false, error: 'Missing key or admin password' }), {
+  const { key, keys, adminPassword } = payload;
+  if ((!key && !keys) || !adminPassword) {
+    return new Response(JSON.stringify({ success: false, error: 'Missing key(s) or admin password' }), {
       status: 400,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
@@ -168,21 +168,35 @@ export async function onRequestDelete({ request, env }) {
     });
   }
   try {
-    const isDirectory = key.endsWith('/');
-    if (isDirectory) {
-      const list = await R2_BUCKET.list({ prefix: key });
-      const keysToDelete = list.objects.map(obj => obj.key);
-      if (keysToDelete.length > 0) {
-        await R2_BUCKET.delete(keysToDelete);
+    const itemsToDelete = keys || [key];
+    if (itemsToDelete.length === 0) {
+      return new Response(JSON.stringify({ success: true, message: 'No items to delete.' }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+    const r2KeysToDelete = [];
+    const dbKeysToDelete = [];
+    for (const itemKey of itemsToDelete) {
+      const isDirectory = itemKey.endsWith('/');
+      if (isDirectory) {
+        const list = await R2_BUCKET.list({ prefix: itemKey });
+        list.objects.forEach(obj => r2KeysToDelete.push(obj.key));
         const stmt = DB.prepare('DELETE FROM files WHERE key LIKE ?');
-        await stmt.bind(`${key}%`).run();
-        console.log(`Successfully deleted directory ${key} from D1.`);
+        await stmt.bind(`${itemKey}%`).run();
+      } else {
+        r2KeysToDelete.push(itemKey);
+        dbKeysToDelete.push(itemKey);
       }
-    } else {
-      await R2_BUCKET.delete(key);
-      const stmt = DB.prepare('DELETE FROM files WHERE key = ?');
-      await stmt.bind(key).run();
-      console.log(`Successfully deleted ${key} from D1.`);
+    }
+    if (r2KeysToDelete.length > 0) {
+      await R2_BUCKET.delete(r2KeysToDelete);
+      console.log(`Successfully deleted ${r2KeysToDelete.length} keys from R2.`);
+    }
+    if (dbKeysToDelete.length > 0) {
+      const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${dbKeysToDelete.map(() => '?').join(',')})`);
+      await stmt.bind(...dbKeysToDelete).run();
+      console.log(`Successfully deleted ${dbKeysToDelete.length} keys from D1.`);
     }
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

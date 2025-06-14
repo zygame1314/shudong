@@ -89,6 +89,9 @@
                                 <i class="fas fa-th"></i>
                             </button>
                         </div>
+                        <button id="selection-mode-btn" class="icon-btn" title="进入选择模式">
+                            <i class="fas fa-check-square"></i>
+                        </button>
                     </div>
                 </div>
 
@@ -124,6 +127,22 @@
                             <span>正在加载文件列表...</span>
                         </li>
                     </ul>
+                </div>
+
+                <div id="selection-toolbar" class="selection-toolbar">
+                    <div class="selection-info">
+                        <span id="selection-count">已选择 0 项</span>
+                    </div>
+                    <div class="selection-actions">
+                        <button id="batch-download-btn" class="primary-btn">
+                            <i class="fas fa-download"></i>
+                            <span>批量下载</span>
+                        </button>
+                        <button id="batch-delete-btn" class="danger-btn">
+                            <i class="fas fa-trash"></i>
+                            <span>批量删除</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="upload-section">

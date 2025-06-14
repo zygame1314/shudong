@@ -567,3 +567,61 @@
     color: var(--primary-dark);
     text-decoration: underline;
 }
+/* Selection Mode Styles */
+#selection-mode-btn.active {
+    color: var(--primary-color);
+    background-color: var(--background-alt);
+}
+
+.selection-toolbar {
+    position: fixed;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 4rem);
+    max-width: 800px;
+    background: var(--background-dark);
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 15px;
+    box-shadow: var(--shadow-heavy);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 1000;
+    transition: bottom 0.3s ease-in-out;
+}
+
+.selection-toolbar.visible {
+    bottom: 2rem;
+}
+
+.selection-info {
+    font-weight: 500;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.file-list-item .file-checkbox {
+    display: none;
+    margin-right: 1rem;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--primary-color);
+}
+
+.file-list.selection-mode .file-checkbox {
+    display: block;
+}
+
+.file-list.selection-mode .file-item {
+    cursor: default;
+}
+
+.file-list-item.selected {
+    background: var(--primary-light-trans);
+    border-color: var(--primary-color);
+}

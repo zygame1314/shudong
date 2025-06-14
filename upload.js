@@ -131,22 +131,26 @@ function showSelectedFile(files) {
     selectedFiles.forEach(file => totalSize += file.size);
     const getRelPath = file => file._webkitRelativePath || file.webkitRelativePath || '';
     let displayName = '';
+    let fileCountText = '';
     let isFolder = false;
-    const hasFolderPath = selectedFiles.some(f => getRelPath(f).includes('/'));
+    const hasFolderPath = selectedFiles.some(f => getRelPath(f) && getRelPath(f).includes('/'));
     if (hasFolderPath) {
         isFolder = true;
         const firstPath = getRelPath(selectedFiles[0]);
         displayName = firstPath.split('/')[0];
+        fileCountText = `(${selectedFiles.length}个文件)`;
     } else if (selectedFiles.length > 1) {
+        isFolder = false;
         displayName = `${selectedFiles.length} 个文件`;
-        isFolder = false;
+        fileCountText = '';
     } else {
-        displayName = selectedFiles[0].name;
         isFolder = false;
+        displayName = selectedFiles[0].name;
+        fileCountText = '';
     }
-    const iconClass = isFolder ? 'fas fa-folder' : getFileIcon(selectedFiles[0].name);
+    const iconClass = isFolder ? 'fas fa-folder' : (selectedFiles.length > 1 ? 'fas fa-copy' : getFileIcon(selectedFiles[0].name));
     selectedFileInfo.querySelector('.file-icon-preview i').className = iconClass;
-    selectedFileInfo.querySelector('.file-name').textContent = `${displayName} (${selectedFiles.length}个文件)`;
+    selectedFileInfo.querySelector('.file-name').textContent = `${displayName} ${fileCountText}`.trim();
     selectedFileInfo.querySelector('.file-size').textContent = formatBytes(totalSize);
     selectedFileInfo.style.display = 'block';
     fileDropZone.style.display = 'none';
@@ -366,7 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     createParticleBackground();
     fillPasswordIfAuthenticated();
-
     const uploadPathInfo = document.getElementById('upload-path-info');
     if (uploadPathInfo) {
         const pathSpan = uploadPathInfo.querySelector('span');

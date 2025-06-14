@@ -20,6 +20,8 @@ let currentView = 'list';
 let currentFilter = 'all';
 const directoryCache = {};
 let isShowingSearchResults = false;
+let isSelectionMode = false;
+let selectedItems = new Set();
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -449,57 +451,123 @@ function updateBreadcrumb(prefix, isSearch = false, searchTerm = '') {
 function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     const li = document.createElement('li');
     li.className = 'file-list-item';
+    li.dataset.key = item.key;
     li.style.opacity = '0';
     li.style.transform = 'translateY(20px)';
     const fileType = isDirectory ? 'folder' : getFileType(item.name);
     const iconClass = getFileIcon(item.name, isDirectory);
-    li.innerHTML = `
-        <div class="file-item">
-            <div class="file-icon ${fileType}">
-                <i class="${iconClass}"></i>
-            </div>
-            <div class="file-info">
-                <div class="file-name">${item.name}</div>
-                ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)}</div>` : '<div class="file-meta">文件夹</div>'}
-            </div>
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'file-checkbox';
+    checkbox.dataset.key = item.key;
+    checkbox.onchange = (e) => handleItemSelection(e.target, item);
+    const fileItemDiv = document.createElement('div');
+    fileItemDiv.className = 'file-item';
+    fileItemDiv.innerHTML = `
+        <div class="file-icon ${fileType}">
+            <i class="${iconClass}"></i>
         </div>
-        <div class="file-actions">
-            ${!isDirectory ? `
-                ${item.size > 2 * 1024 * 1024
-                    ? `<button class="preview-button" disabled title="文件超过2MB，不支持预览">
-                           <i class="fas fa-eye-slash"></i>
-                           预览
-                       </button>`
-                    : `<button class="preview-button" onclick="previewFile('${item.key}', '${item.name}', ${item.size})">
-                           <i class="fas fa-eye"></i>
-                           预览
-                       </button>`
-                }
-                <button class="download-button" onclick="downloadFile('${item.key}')">
-                    <i class="fas fa-download"></i>
-                    下载
-                </button>
-            ` : ''}
-            <button class="delete-button" onclick="deleteFile('${item.key}', ${isDirectory})">
-                <i class="fas fa-trash"></i>
-            </button>
+        <div class="file-info">
+            <div class="file-name">${item.name}</div>
+            ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)}</div>` : '<div class="file-meta">文件夹</div>'}
         </div>
     `;
+    const fileActionsDiv = document.createElement('div');
+    fileActionsDiv.className = 'file-actions';
+    fileActionsDiv.innerHTML = `
+        ${!isDirectory ? `
+            ${item.size > 2 * 1024 * 1024
+                ? `<button class="preview-button" disabled title="文件超过2MB，不支持预览">
+                       <i class="fas fa-eye-slash"></i>
+                       预览
+                   </button>`
+                : `<button class="preview-button">
+                       <i class="fas fa-eye"></i>
+                       预览
+                   </button>`
+            }
+            <button class="download-button">
+                <i class="fas fa-download"></i>
+                下载
+            </button>
+        ` : ''}
+        <button class="delete-button">
+            <i class="fas fa-trash"></i>
+        </button>
+    `;
+    li.appendChild(checkbox);
+    li.appendChild(fileItemDiv);
+    li.appendChild(fileActionsDiv);
+    if (!isDirectory) {
+        const previewBtn = fileActionsDiv.querySelector('.preview-button');
+        if (previewBtn && !previewBtn.disabled) {
+            previewBtn.onclick = () => previewFile(item.key, item.name, item.size);
+        }
+        const downloadBtn = fileActionsDiv.querySelector('.download-button');
+        if (downloadBtn) {
+            downloadBtn.onclick = () => downloadFile(item.key);
+        }
+    }
+    const deleteBtn = fileActionsDiv.querySelector('.delete-button');
+    if (deleteBtn) {
+        deleteBtn.onclick = () => deleteFile(item.key, isDirectory);
+    }
     if (isDirectory) {
-        li.style.cursor = 'pointer';
-        li.onclick = (e) => {
-            if (!e.target.closest('.download-button')) {
+        fileItemDiv.style.cursor = 'pointer';
+        fileItemDiv.onclick = (e) => {
+            if (!isSelectionMode) {
                 if (searchInput) searchInput.value = '';
                 fetchAndDisplayFiles(item.key);
             }
         };
     }
+    li.onclick = (e) => {
+        if (isSelectionMode && e.target.type !== 'checkbox') {
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+        }
+    };
     setTimeout(() => {
         li.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
         li.style.opacity = '1';
         li.style.transform = 'translateY(0)';
     }, Math.random() * 200);
     return li;
+}
+function toggleSelectionMode() {
+    isSelectionMode = !isSelectionMode;
+    fileListElement.classList.toggle('selection-mode', isSelectionMode);
+    const selectionModeBtn = document.getElementById('selection-mode-btn');
+    selectionModeBtn.classList.toggle('active', isSelectionMode);
+    selectionModeBtn.title = isSelectionMode ? '退出选择模式' : '进入选择模式';
+    if (!isSelectionMode) {
+        selectedItems.clear();
+        document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.file-list-item.selected').forEach(item => item.classList.remove('selected'));
+    }
+    updateSelectionToolbar();
+}
+function handleItemSelection(checkbox, item) {
+    const listItem = checkbox.closest('.file-list-item');
+    if (checkbox.checked) {
+        selectedItems.add(item.key);
+        listItem.classList.add('selected');
+    } else {
+        selectedItems.delete(item.key);
+        listItem.classList.remove('selected');
+    }
+    updateSelectionToolbar();
+}
+function updateSelectionToolbar() {
+    const toolbar = document.getElementById('selection-toolbar');
+    const countSpan = document.getElementById('selection-count');
+    const selectedCount = selectedItems.size;
+    if (isSelectionMode && selectedCount > 0) {
+        toolbar.classList.add('visible');
+        countSpan.textContent = `已选择 ${selectedCount} 项`;
+    } else {
+        toolbar.classList.remove('visible');
+    }
 }
 function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '') {
     fileListElement.innerHTML = '';
@@ -721,6 +789,18 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPrefix = '';
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
+    }
+    const selectionModeBtn = document.getElementById('selection-mode-btn');
+    if (selectionModeBtn) {
+        selectionModeBtn.addEventListener('click', toggleSelectionMode);
+    }
+    const batchDeleteBtn = document.getElementById('batch-delete-btn');
+    if (batchDeleteBtn) {
+        batchDeleteBtn.addEventListener('click', handleBatchDelete);
+    }
+    const batchDownloadBtn = document.getElementById('batch-download-btn');
+    if (batchDownloadBtn) {
+        batchDownloadBtn.addEventListener('click', handleBatchDownload);
     }
     viewButtons.forEach(btn => {
         btn.addEventListener('click', () => {
