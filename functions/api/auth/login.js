@@ -145,12 +145,17 @@ export async function onRequestPost({ request, env }) {
         }
         const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         const cookieJar = new CookieJar();
-        const serviceUrl = "https://one.ccnu.edu.cn/auth-protocol-core/loginSuccess?sessionToken=4b66ac55cd454ae68c52b391b1bab891";
+        debugLogs.push("步骤0: 开始预请求 one.ccnu.edu.cn 获取前置Cookie...");
+        const preflightUrl = "https://one.ccnu.edu.cn/";
+        const preflightResponse = await fetch(preflightUrl, { headers: { 'User-Agent': userAgent } });
+        cookieJar.addFromHeaders(preflightResponse.headers.getSetCookie(), preflightUrl);
+        debugLogs.push(`前置Cookie获取完成: ${cookieJar.toHeaderStringForUrl(preflightUrl)}`);
+        const serviceUrl = "https://one.ccnu.edu.cn/auth-protocol-core/loginSuccess?sessionToken=1406f29e867c49ab9e88570ab15a266d";
         const loginPageUrl = `https://account.ccnu.edu.cn/cas/login?service=${encodeURIComponent(serviceUrl)}`;
         debugLogs.push("步骤1: 开始获取登录前提条件...");
         const { lt, execution } = await getLoginPrerequisites(loginPageUrl, cookieJar, userAgent);
         debugLogs.push(`获取成功: lt=${lt.substring(0, 10)}..., execution=${execution}`);
-        debugLogs.push(`初始Cookie: ${cookieJar.toHeaderStringForUrl(loginPageUrl)}`);
+        debugLogs.push(`初始Cookie(含前置): ${cookieJar.toHeaderStringForUrl(loginPageUrl)}`);
         const formData = new URLSearchParams({
             username, password, lt, execution,
             _eventId: 'submit', submit: '登录'
@@ -158,30 +163,9 @@ export async function onRequestPost({ request, env }) {
         debugLogs.push("步骤2: 开始POST登录表单...");
         await performLoginAndRedirects(loginPageUrl, formData, cookieJar, userAgent);
         debugLogs.push("重定向链处理完成。");
-        debugLogs.push(`最终Cookie: ${JSON.stringify(cookieJar.cookies)}`);
-        debugLogs.push("步骤3: 开始验证会话并获取用户信息...");
-        const apiUrl = `https://one.ccnu.edu.cn/getLoginUser?_t=${Math.random()}`;
-        const userInfoResponse = await fetch(apiUrl, {
-            headers: {
-                'User-Agent': userAgent,
-                'Cookie': cookieJar.toHeaderStringForUrl(apiUrl),
-                'X-Requested-With': 'XMLHttpRequest',
-                'Referer': 'https://one.ccnu.edu.cn/default/index.html'
-            }
-        });
-        const rawUserInfoText = await userInfoResponse.text();
-        debugLogs.push(`GET /getLoginUser 状态码: ${userInfoResponse.status}`);
-        debugLogs.push(`GET /getLoginUser 原始响应: ${rawUserInfoText}`);
-        const userInfo = JSON.parse(rawUserInfoText);
-        if (userInfo.errcode !== '0' || !userInfo.data || !userInfo.data.userAccount) {
-            throw new Error('会话无效或无法获取用户信息。');
-        }
-        const userData = {
-            account: userInfo.data.userAccount,
-            name: userInfo.data.userName,
-            category: userInfo.data.categoryName,
-            isLifer: userInfo.data.deptName.includes("生命科学")
-        };
+        debugLogs.push(`最终Cookie详情: ${JSON.stringify(cookieJar.cookies, null, 2)}`);
+        debugLogs.push("步骤4: 开始验证会话并获取用户信息...");
+        const userData = await verifySessionAndGetUser(cookieJar, userAgent);
         debugLogs.push("用户信息验证成功: " + JSON.stringify(userData));
         const token = await issueInternalJwt(userData, env.JWT_SECRET);
         return new Response(JSON.stringify({ success: true, token, user: userData }), {
