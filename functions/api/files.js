@@ -21,6 +21,9 @@ function verifyPassword(request, env) {
   const providedPassword = authHeader.substring(7);
   return providedPassword === correctPassword;
 }
+
+const DEFAULT_PAGE_SIZE = 50;
+
 export async function onRequestGet({ request, env }) {
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
@@ -36,8 +39,10 @@ export async function onRequestGet({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
+
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
+
   if (action === 'stats') {
     try {
       const stmt = DB.prepare('SELECT COUNT(*) as fileCount, SUM(size) as totalSize FROM files');
@@ -60,64 +65,108 @@ export async function onRequestGet({ request, env }) {
       });
     }
   }
+
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
+  const page = parseInt(url.searchParams.get('page')) || 1;
+  const limit = parseInt(url.searchParams.get('limit')) || DEFAULT_PAGE_SIZE;
+  const offset = (page - 1) * limit;
+
   try {
-    let files = [];
-    let directories = [];
-    let isGlobalSearch = false;
     if (searchTerm) {
-      isGlobalSearch = true;
-      console.log(`Performing global search for: "${searchTerm}"`);
-      const stmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE name LIKE ?');
-      const { results } = await stmt.bind(`%${searchTerm}%`).all();
-      files = results.map(row => ({ ...row, isSearchResult: true }));
+      console.log(`Performing global search for: "${searchTerm}", page: ${page}, limit: ${limit}`);
+      const searchCondition = `%${searchTerm}%`;
+      
+      const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
+      const { total: totalItems } = await countStmt.bind(searchCondition).first();
+      const totalPages = Math.ceil(totalItems / limit);
+
+      const searchStmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?');
+      const { results: filesResults } = await searchStmt.bind(searchCondition, limit, offset).all();
+      
+      return new Response(JSON.stringify({
+        success: true,
+        files: filesResults.map(f => ({ ...f, isSearchResult: true })),
+        directories: [],
+        isGlobalSearch: true,
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        limit: limit
+      }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+
     } else {
-      console.log(`Listing files for prefix: "${prefix}"`);
-      const stmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE key LIKE ?');
-      const { results } = await stmt.bind(`${prefix}%`).all();
-      const directorySet = new Set();
+      console.log(`Listing files for prefix: "${prefix}", page: ${page}, limit: ${limit}`);
+      
+      const allItemsStmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE key LIKE ? ORDER BY key ASC');
+      const { results: allDbItems } = await allItemsStmt.bind(`${prefix}%`).all();
+
+      const directoryMap = new Map();
+      const fileList = [];
       const prefixLength = prefix.length;
-      files = results
-        .map(row => {
-          const path = row.key.substring(prefixLength);
-          const parts = path.split('/');
-          if (parts.length > 1) {
-            const dirName = parts[0];
-            directorySet.add(dirName);
-            return null;
+
+      allDbItems.forEach(row => {
+        const pathAfterPrefix = row.key.substring(prefixLength);
+        if (!pathAfterPrefix) return;
+
+        const firstSlashIndex = pathAfterPrefix.indexOf('/');
+
+        if (firstSlashIndex !== -1) {
+          const entryName = pathAfterPrefix.substring(0, firstSlashIndex);
+          if (!directoryMap.has(entryName)) {
+            directoryMap.set(entryName, {
+              key: `${prefix}${entryName}/`,
+              name: entryName,
+              isDirectory: true
+            });
           }
-          return {
+        } else {
+          fileList.push({
             key: row.key,
-            name: path,
+            name: pathAfterPrefix,
             size: row.size,
             uploaded: row.uploaded,
-          };
-        })
-        .filter(Boolean);
-      directories = Array.from(directorySet).map(dirName => ({
-        key: `${prefix}${dirName}/`,
-        name: dirName,
-      }));
+            isDirectory: false
+          });
+        }
+      });
+
+      const sortedDirectories = Array.from(directoryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const sortedFiles = fileList.sort((a, b) => a.name.localeCompare(b.name));
+      
+      const combinedItems = [...sortedDirectories, ...sortedFiles];
+      
+      const totalItems = combinedItems.length;
+      const totalPages = Math.ceil(totalItems / limit);
+      const paginatedCombinedItems = combinedItems.slice(offset, offset + limit);
+
+      const responseDirectories = paginatedCombinedItems.filter(item => item.isDirectory);
+      const responseFiles = paginatedCombinedItems.filter(item => !item.isDirectory);
+
+      return new Response(JSON.stringify({
+        success: true,
+        prefix: prefix,
+        files: responseFiles,
+        directories: responseDirectories,
+        isGlobalSearch: false,
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        limit: limit
+      }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
     }
-    directories.sort((a, b) => a.name.localeCompare(b.name));
-    files.sort((a, b) => a.name.localeCompare(b.name));
-    return new Response(JSON.stringify({
-      success: true,
-      prefix: isGlobalSearch ? '' : prefix,
-      files: files,
-      directories: directories,
-      isGlobalSearch: isGlobalSearch
-    }), {
-      status: 200,
-      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-    });
   } catch (error) {
     const errorContext = searchTerm ? `global search for "${searchTerm}"` : `prefix "${prefix}"`;
     console.error(`Error listing files from D1 during ${errorContext}:`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to list files.' }), {
       status: 500,
-      headers: addCorsHeaders({ 'Content-T ype': 'application/json' }),
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 }

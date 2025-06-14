@@ -22,6 +22,11 @@ const directoryCache = {};
 let isShowingSearchResults = false;
 let isSelectionMode = false;
 let selectedItems = new Set();
+
+let currentPage = 1;
+let totalPages = 1;
+let itemsPerPage = 50;
+let currentTotalItems = 0;
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -267,13 +272,9 @@ async function deleteFile(key, isDirectory) {
                 }
                 showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
                 const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
-                if (directoryCache[currentPrefix]) {
-                    delete directoryCache[currentPrefix];
-                }
-                if (directoryCache[parentPrefix]) {
-                    delete directoryCache[parentPrefix];
-                }
-                fetchAndDisplayFiles(currentPrefix);
+                if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+                if (directoryCache[parentPrefix]) delete directoryCache[parentPrefix];
+                fetchAndDisplayFiles(currentPrefix, '', currentPage);
             }
         });
     } catch (error) {
@@ -537,16 +538,31 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
 function toggleSelectionMode() {
     isSelectionMode = !isSelectionMode;
     fileListElement.classList.toggle('selection-mode', isSelectionMode);
+
     const selectionModeBtn = document.getElementById('selection-mode-btn');
+    const selectAllBtn = document.getElementById('select-all-btn');
+    const btnSpan = selectionModeBtn.querySelector('span');
+
     selectionModeBtn.classList.toggle('active', isSelectionMode);
-    selectionModeBtn.title = isSelectionMode ? '退出选择模式' : '进入选择模式';
-    if (!isSelectionMode) {
+
+    if (isSelectionMode) {
+        if (btnSpan) btnSpan.textContent = '退出选择';
+        if (selectAllBtn) selectAllBtn.style.display = 'inline-flex';
+    } else {
+        if (btnSpan) btnSpan.textContent = '批量选择';
+        if (selectAllBtn) {
+            selectAllBtn.style.display = 'none';
+            const selectAllSpan = selectAllBtn.querySelector('span');
+            if (selectAllSpan) selectAllSpan.textContent = '全选';
+        }
+        
         selectedItems.clear();
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
         document.querySelectorAll('.file-list-item.selected').forEach(item => item.classList.remove('selected'));
     }
     updateSelectionToolbar();
 }
+
 function handleItemSelection(checkbox, item) {
     const listItem = checkbox.closest('.file-list-item');
     if (checkbox.checked) {
@@ -558,15 +574,59 @@ function handleItemSelection(checkbox, item) {
     }
     updateSelectionToolbar();
 }
+
+function updateSelectAllButtonState() {
+    const selectAllBtn = document.getElementById('select-all-btn');
+    if (!selectAllBtn || !isSelectionMode) return;
+
+    const checkboxes = document.querySelectorAll('.file-list-item:not(.back-item) .file-checkbox');
+    const totalVisibleItems = checkboxes.length;
+    const selectedCount = selectedItems.size;
+    const btnSpan = selectAllBtn.querySelector('span');
+    if (!btnSpan) return;
+
+    if (totalVisibleItems > 0 && selectedCount === totalVisibleItems) {
+        btnSpan.textContent = '取消全选';
+    } else {
+        btnSpan.textContent = '全选';
+    }
+}
+
 function updateSelectionToolbar() {
     const toolbar = document.getElementById('selection-toolbar');
     const countSpan = document.getElementById('selection-count');
     const selectedCount = selectedItems.size;
+
     if (isSelectionMode && selectedCount > 0) {
         toolbar.classList.add('visible');
         countSpan.textContent = `已选择 ${selectedCount} 项`;
     } else {
         toolbar.classList.remove('visible');
+    }
+    updateSelectAllButtonState();
+}
+
+function handleSelectAll() {
+    const checkboxes = document.querySelectorAll('.file-list-item:not(.back-item) .file-checkbox');
+    const allVisibleItems = Array.from(checkboxes).map(cb => cb.closest('.file-list-item'));
+    const areAllSelected = selectedItems.size === allVisibleItems.length && allVisibleItems.length > 0;
+
+    if (areAllSelected) {
+        allVisibleItems.forEach(item => {
+            const checkbox = item.querySelector('.file-checkbox');
+            if (checkbox && checkbox.checked) {
+                checkbox.checked = false;
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    } else {
+        allVisibleItems.forEach(item => {
+            const checkbox = item.querySelector('.file-checkbox');
+            if (checkbox && !checkbox.checked) {
+                checkbox.checked = true;
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
     }
 }
 async function handleBatchDelete() {
@@ -609,12 +669,11 @@ async function handleBatchDelete() {
                         delete directoryCache[parentPrefix];
                     }
                 });
-                if (directoryCache[currentPrefix]) {
-                    delete directoryCache[currentPrefix];
-                }
+                if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
                 selectedItems.clear();
-                toggleSelectionMode();
-                fetchAndDisplayFiles(currentPrefix);
+                fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
+                    if(isSelectionMode) toggleSelectionMode();
+                });
             }
         });
     } catch (error) {
@@ -677,7 +736,7 @@ async function handleBatchDownload() {
         downloadBtn.innerHTML = '<i class="fas fa-download"></i> 批量下载';
     }
 }
-function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '') {
+function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '', paginationData = null) {
     fileListElement.innerHTML = '';
     const lowerLocalSearchTerm = localSearchTerm.trim().toLowerCase();
     if (isGlobalSearch) {
@@ -775,8 +834,63 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
         emptyLi.innerHTML = emptyMessage;
         fileListElement.appendChild(emptyLi);
     }
+
+    renderPaginationControls(paginationData);
 }
-async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
+
+function renderPaginationControls(paginationData) {
+    let controlsContainer = document.getElementById('pagination-controls');
+    if (!controlsContainer) {
+        console.warn('Pagination controls container not found. Creating one.');
+        controlsContainer = document.createElement('div');
+        controlsContainer.id = 'pagination-controls';
+        controlsContainer.className = 'pagination-controls';
+        controlsContainer.style.cssText = 'display: flex; justify-content: center; align-items: center; padding: 1rem; gap: 0.5rem;';
+        if (fileListElement.parentNode) {
+            fileListElement.parentNode.insertBefore(controlsContainer, fileListElement.nextSibling);
+        } else {
+            document.body.appendChild(controlsContainer);
+        }
+    }
+    controlsContainer.innerHTML = '';
+
+    if (!paginationData || paginationData.totalPages <= 1) {
+        controlsContainer.style.display = 'none';
+        return;
+    }
+    controlsContainer.style.display = 'flex';
+
+    const { currentPage, totalPages, totalItems } = paginationData;
+
+    const prevButton = document.createElement('button');
+    prevButton.innerHTML = '<i class="fas fa-chevron-left"></i> 上一页';
+    prevButton.className = 'pagination-button';
+    prevButton.disabled = currentPage <= 1;
+    prevButton.onclick = () => {
+        if (currentPage > 1) {
+            fetchAndDisplayFiles(currentPrefix, isShowingSearchResults ? searchInput.value.trim() : '', currentPage - 1);
+        }
+    };
+    controlsContainer.appendChild(prevButton);
+
+    const pageInfo = document.createElement('span');
+    pageInfo.className = 'pagination-info';
+    pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页 (共 ${totalItems} 项)`;
+    controlsContainer.appendChild(pageInfo);
+
+    const nextButton = document.createElement('button');
+    nextButton.innerHTML = '下一页 <i class="fas fa-chevron-right"></i>';
+    nextButton.className = 'pagination-button';
+    nextButton.disabled = currentPage >= totalPages;
+    nextButton.onclick = () => {
+        if (currentPage < totalPages) {
+            fetchAndDisplayFiles(currentPrefix, isShowingSearchResults ? searchInput.value.trim() : '', currentPage + 1);
+        }
+    };
+    controlsContainer.appendChild(nextButton);
+}
+
+async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
     const password = getAuthPassword();
     if (!password) {
         fileListElement.innerHTML = `
@@ -787,34 +901,45 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
         `;
         updateBreadcrumb('');
         isShowingSearchResults = false;
+        renderPaginationControls(null);
         return;
     }
+
     const isGlobal = searchTerm.trim() !== '';
     if (!isGlobal) {
         currentPrefix = prefix;
     }
+    if (prefix !== currentPrefix || (isGlobal && !isShowingSearchResults) || page === undefined) {
+        currentPage = 1;
+    } else {
+        currentPage = page;
+    }
+
+
     fileListElement.innerHTML = `
         <li class="loading-item">
             <div class="loading-spinner"></div>
-            <span>正在加载文件列表...</span>
+            <span>正在加载文件列表... (第 ${currentPage} 页)</span>
         </li>
     `;
-    let url;
+    renderPaginationControls(null);
+
+    let urlParams = new URLSearchParams();
     if (isGlobal) {
-        console.log(`发起全局搜索: "${searchTerm}"`);
-        url = `${FILES_API_URL}?search=${encodeURIComponent(searchTerm.trim())}`;
+        console.log(`发起全局搜索: "${searchTerm}", page: ${currentPage}`);
+        urlParams.append('search', searchTerm.trim());
+        isShowingSearchResults = true;
     } else {
-        console.log(`加载目录: "${prefix || '根目录'}"`);
-        url = `${FILES_API_URL}?prefix=${encodeURIComponent(prefix)}`;
-        const localSearchTerm = searchInput ? searchInput.value.trim() : '';
-        if (!localSearchTerm && directoryCache[prefix]) {
-            console.log(`从缓存加载: ${prefix || '根目录'}`);
-            renderFileList(prefix, directoryCache[prefix], false, '');
-            isShowingSearchResults = false;
-            updateBreadcrumb(prefix);
-            return;
-        }
+        console.log(`加载目录: "${prefix || '根目录'}", page: ${currentPage}`);
+        urlParams.append('prefix', prefix);
+        isShowingSearchResults = false;
     }
+    urlParams.append('page', currentPage.toString());
+    urlParams.append('limit', itemsPerPage.toString());
+
+    const url = `${FILES_API_URL}?${urlParams.toString()}`;
+
+
     try {
         const response = await fetch(url, {
             method: 'GET',
@@ -843,22 +968,28 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
                     }
                 });
             }
-            if (!isGlobal) {
-                directoryCache[prefix] = { files: receivedData.files, directories: receivedData.directories };
-                console.log(`缓存已更新: ${prefix || '根目录'}`);
-            }
+            const paginationData = {
+                currentPage: result.currentPage,
+                totalPages: result.totalPages,
+                totalItems: result.totalItems,
+                limit: result.limit
+            };
+            currentTotalItems = result.totalItems;
+            totalPages = result.totalPages;
+
+
             const currentLocalSearch = searchInput ? searchInput.value.trim() : '';
-            renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : currentLocalSearch);
+            renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : currentLocalSearch, paginationData);
         } else {
             const errorMessage = result?.error || `HTTP 错误 ${response.status}`;
             console.error("获取文件列表失败:", errorMessage, result);
+            renderPaginationControls(null);
             fileListElement.innerHTML = `
                 <li class="empty-state" style="text-align: center; padding: 3rem; color: var(--accent-color);">
                     <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
                     获取文件列表失败: ${errorMessage}
                 </li>
             `;
-            isShowingSearchResults = isGlobal;
             updateBreadcrumb(isGlobal ? '' : prefix, isGlobal, searchTerm.trim());
         }
     } catch (error) {
@@ -869,19 +1000,20 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
                 获取文件列表请求出错: ${error.message}
             </li>
         `;
-        isShowingSearchResults = isGlobal;
         updateBreadcrumb(isGlobal ? '' : prefix, isGlobal, searchTerm.trim());
+        renderPaginationControls(null);
     }
     updateUploadButtonLink();
+    updateSelectAllButtonState();
 }
 document.addEventListener('authSuccess', () => {
     console.log("验证成功 (authSuccess event received)，开始加载根目录文件列表...");
-    fetchAndDisplayFiles('');
+    fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
 });
 document.addEventListener('authRestored', () => {
     console.log("从 localStorage 恢复验证状态 (authRestored event received)，开始加载根目录文件列表...");
-    fetchAndDisplayFiles('');
+    fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
 });
 document.addEventListener('DOMContentLoaded', () => {
@@ -895,6 +1027,8 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     updateBreadcrumb('');
     currentPrefix = '';
+    renderPaginationControls(null);
+
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
@@ -909,6 +1043,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const batchDownloadBtn = document.getElementById('batch-download-btn');
     if (batchDownloadBtn) {
         batchDownloadBtn.addEventListener('click', handleBatchDownload);
+    }
+    const selectAllBtn = document.getElementById('select-all-btn');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', handleSelectAll);
     }
     viewButtons.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -925,9 +1063,7 @@ document.addEventListener('DOMContentLoaded', () => {
             filterButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFilter = btn.dataset.filter;
-            if (currentPrefix && directoryCache[currentPrefix]) {
-                renderFileList(currentPrefix, directoryCache[currentPrefix], false, searchInput?.value.trim() || '');
-            }
+            fetchAndDisplayFiles(currentPrefix, isShowingSearchResults ? searchInput.value.trim() : '', currentPage);
         });
     });
     if (closePreviewBtn && previewModal) {
@@ -950,11 +1086,7 @@ document.addEventListener('DOMContentLoaded', () => {
 if (searchButton && searchInput) {
     const performSearch = () => {
         const searchTerm = searchInput.value.trim();
-        if (searchTerm) {
-            fetchAndDisplayFiles('', searchTerm);
-        } else {
-            fetchAndDisplayFiles(currentPrefix, '');
-        }
+        fetchAndDisplayFiles(searchTerm ? '' : currentPrefix, searchTerm, 1);
     };
     searchButton.addEventListener('click', performSearch);
     searchInput.addEventListener('keydown', (event) => {
@@ -963,8 +1095,11 @@ if (searchButton && searchInput) {
         }
     });
     searchInput.addEventListener('input', () => {
-        if (searchInput.value.trim() === '') {
-            fetchAndDisplayFiles(currentPrefix, '');
+        const searchTerm = searchInput.value.trim();
+        if (searchTerm === '' && isShowingSearchResults) {
+            fetchAndDisplayFiles(currentPrefix, '', 1);
+        } else if (searchTerm === '' && !isShowingSearchResults) {
+             fetchAndDisplayFiles(currentPrefix, '', currentPage);
         }
     });
 }
@@ -999,7 +1134,6 @@ style.textContent = `
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.2s ease;
-        margin-left: 0.5rem;
         font-size: 0.8rem;
     }
     .delete-button:hover {
@@ -1023,3 +1157,43 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+const paginationStyle = document.createElement('style');
+paginationStyle.textContent = `
+    .pagination-controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 1rem;
+        gap: 0.5rem; /* 按钮和信息之间的间距 */
+        margin-top: 1rem;
+        border-top: 1px solid var(--border-color);
+    }
+    .pagination-button {
+        background-color: var(--button-bg);
+        color: var(--button-text);
+        border: 1px solid var(--button-border);
+        padding: 0.5rem 1rem;
+        border-radius: var(--border-radius-small);
+        cursor: pointer;
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        font-size: 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .pagination-button:hover:not(:disabled) {
+        background-color: var(--button-hover-bg);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .pagination-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .pagination-info {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        margin: 0 0.5rem; /* 与按钮的间距 */
+    }
+`;
+document.head.appendChild(paginationStyle);

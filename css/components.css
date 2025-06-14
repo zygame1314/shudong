@@ -39,6 +39,27 @@
     box-shadow: var(--shadow-medium);
 }
 
+.danger-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.2rem;
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+    box-shadow: var(--shadow-light);
+    text-decoration: none;
+}
+
+.danger-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
 .text-gradient {
     background: var(--primary-gradient);
     -webkit-background-clip: text;
@@ -154,7 +175,6 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    margin-left: 0.5rem;
 }
 
 .preview-button:hover {
@@ -187,7 +207,6 @@
     }
 }
 
-/* Modal Styles */
 .modal-overlay {
     position: fixed;
     top: 0;
