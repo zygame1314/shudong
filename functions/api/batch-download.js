@@ -1,4 +1,4 @@
-import JSZip from 'https://esm.sh/jszip@3.10.1';
+import JSZip from 'jszip';
 const addCorsHeaders = (headers = {}) => {
   const allowedOrigin = '*';
   return {
