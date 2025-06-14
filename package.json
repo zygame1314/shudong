@@ -1,0 +1,8 @@
+{
+  "name": "shudong-project",
+  "version": "1.0.0",
+  "description": "A file sharing platform.",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  }
+}
