@@ -58,10 +58,9 @@ class CookieJar {
         const now = new Date();
         return this.cookies.filter(cookie => {
             const domainMatch = url.hostname.endsWith(cookie.domain);
-            const pathMatch = url.pathname.startsWith(cookie.path);
             const notExpired = !cookie.expires || cookie.expires > now;
             const secureMatch = !cookie.secure || url.protocol === 'https протокол:';
-            return domainMatch && pathMatch && notExpired && secureMatch;
+            return domainMatch && notExpired && secureMatch;
         });
     }
     toHeaderStringForUrl(urlString) {
