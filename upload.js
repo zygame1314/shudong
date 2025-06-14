@@ -13,6 +13,7 @@ const progressStatus = document.getElementById('progress-status');
 const passwordToggle = document.getElementById('password-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const UPLOAD_API_URL = `${API_BASE_URL}/api/upload`;
+const CONCURRENT_UPLOADS = 3;
 let selectedFiles = [];
 let isDragging = false;
 const urlParams = new URLSearchParams(window.location.search);
@@ -125,12 +126,27 @@ function validateFile(file) {
 }
 function showSelectedFile(files) {
     selectedFiles = Array.from(files);
+    if (selectedFiles.length === 0) return;
     let totalSize = 0;
     selectedFiles.forEach(file => totalSize += file.size);
-    const fileOrFolderName = selectedFiles.length === 1 ? selectedFiles[0].name : (selectedFiles[0].webkitRelativePath.split('/')[0] || '多个文件');
-    const iconClass = selectedFiles.length > 1 ? 'fas fa-folder' : getFileIcon(selectedFiles[0].name);
+    const getRelPath = file => file._webkitRelativePath || file.webkitRelativePath || '';
+    let displayName = '';
+    let isFolder = false;
+    const hasFolderPath = selectedFiles.some(f => getRelPath(f).includes('/'));
+    if (hasFolderPath) {
+        isFolder = true;
+        const firstPath = getRelPath(selectedFiles[0]);
+        displayName = firstPath.split('/')[0];
+    } else if (selectedFiles.length > 1) {
+        displayName = `${selectedFiles.length} 个文件`;
+        isFolder = false;
+    } else {
+        displayName = selectedFiles[0].name;
+        isFolder = false;
+    }
+    const iconClass = isFolder ? 'fas fa-folder' : getFileIcon(selectedFiles[0].name);
     selectedFileInfo.querySelector('.file-icon-preview i').className = iconClass;
-    selectedFileInfo.querySelector('.file-name').textContent = `${fileOrFolderName} (${selectedFiles.length}个文件)`;
+    selectedFileInfo.querySelector('.file-name').textContent = `${displayName} (${selectedFiles.length}个文件)`;
     selectedFileInfo.querySelector('.file-size').textContent = formatBytes(totalSize);
     selectedFileInfo.style.display = 'block';
     fileDropZone.style.display = 'none';
@@ -260,9 +276,20 @@ async function handleUpload(event) {
     `;
     let filesUploaded = 0;
     const totalFiles = selectedFiles.length;
-    const uploadFile = async (file) => {
+    const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    const fileProgress = new Map();
+    const updateTotalProgress = () => {
+        let totalUploadedSize = 0;
+        for (const file of selectedFiles) {
+            totalUploadedSize += (fileProgress.get(file) || 0) * file.size;
+        }
+        const overallPercentage = totalSize > 0 ? Math.round((totalUploadedSize / totalSize) * 100) : 0;
+        const status = filesUploaded === totalFiles ? '所有文件上传完成！' : `上传中 (${filesUploaded}/${totalFiles})...`;
+        updateProgress(overallPercentage, status);
+    };
+    const uploadFile = (file) => {
         const formData = new FormData();
-        let fileName = file.webkitRelativePath || file.name;
+        let fileName = file._webkitRelativePath || file.webkitRelativePath || file.name;
         if (uploadPath) {
             fileName = `${uploadPath}${fileName}`;
         }
@@ -272,9 +299,8 @@ async function handleUpload(event) {
             const xhr = new XMLHttpRequest();
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    const percentage = Math.round((e.loaded / e.total) * 100);
-                    const overallPercentage = Math.round(((filesUploaded + (e.loaded / e.total)) / totalFiles) * 100);
-                    updateProgress(overallPercentage, `上传中 (${filesUploaded + 1}/${totalFiles}): ${fileName} - ${percentage}%`);
+                    fileProgress.set(file, e.loaded / e.total);
+                    updateTotalProgress();
                 }
             });
             xhr.addEventListener('load', () => {
@@ -282,6 +308,8 @@ async function handleUpload(event) {
                     const result = JSON.parse(xhr.responseText);
                     if (xhr.status === 200 && result.success) {
                         filesUploaded++;
+                        fileProgress.set(file, 1);
+                        updateTotalProgress();
                         resolve(result);
                     } else {
                         reject(new Error(result.error || `HTTP ${xhr.status}`));
@@ -297,20 +325,30 @@ async function handleUpload(event) {
     };
     try {
         updateProgress(0, `准备上传 ${totalFiles} 个文件...`);
-        for (const file of selectedFiles) {
-            try {
-                const result = await uploadFile(file);
-                showNotification(`文件 "${result.filename}" 上传成功！`, 'success');
-            } catch (error) {
-                showUploadStatus(`上传文件 "${file.webkitRelativePath || file.name}" 失败: ${error.message}`, 'error');
-                showNotification(`上传文件 "${file.webkitRelativePath || file.name}" 失败`, 'error');
+        const queue = [...selectedFiles];
+        const worker = async () => {
+            while (queue.length > 0) {
+                const file = queue.shift();
+                if (file) {
+                    try {
+                        const result = await uploadFile(file);
+                        showNotification(`文件 "${result.filename}" 上传成功！`, 'success');
+                    } catch (error) {
+                        showUploadStatus(`上传文件 "${file.webkitRelativePath || file.name}" 失败: ${error.message}`, 'error');
+                        showNotification(`上传文件 "${file.webkitRelativePath || file.name}" 失败`, 'error');
+                    }
+                }
             }
+        };
+        const workers = [];
+        for (let i = 0; i < CONCURRENT_UPLOADS; i++) {
+            workers.push(worker());
         }
+        await Promise.all(workers);
         updateProgress(100, '所有文件上传完成！');
         showUploadStatus(`${filesUploaded} / ${totalFiles} 个文件上传成功！`, filesUploaded === totalFiles ? 'success' : 'error');
         setTimeout(() => {
             clearSelectedFile();
-            passwordInput.value = '';
             resetProgress();
         }, 3000);
     } catch (error) {
@@ -328,6 +366,17 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     createParticleBackground();
     fillPasswordIfAuthenticated();
+
+    const uploadPathInfo = document.getElementById('upload-path-info');
+    if (uploadPathInfo) {
+        const pathSpan = uploadPathInfo.querySelector('span');
+        if (uploadPath) {
+            pathSpan.textContent = `文件将上传到: /${uploadPath}`;
+        } else {
+            pathSpan.textContent = '文件将上传到: 根目录';
+        }
+        uploadPathInfo.style.display = 'flex';
+    }
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
@@ -360,15 +409,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 fileDropZone.style.backgroundColor = '';
             }
         });
-        fileDropZone.addEventListener('drop', (e) => {
+        fileDropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             isDragging = false;
             fileDropZone.style.borderColor = '';
             fileDropZone.style.backgroundColor = '';
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileSelect(files);
+            const items = e.dataTransfer.items;
+            if (items && items.length > 0) {
+                const allFiles = [];
+                const traverseFileTree = async (item, path) => {
+                    path = path || "";
+                    if (item.isFile) {
+                        return new Promise((resolve) => {
+                            item.file(file => {
+                                file._webkitRelativePath = path + file.name;
+                                allFiles.push(file);
+                                resolve();
+                            });
+                        });
+                    } else if (item.isDirectory) {
+                        const dirReader = item.createReader();
+                        const entries = await new Promise(resolve => dirReader.readEntries(resolve));
+                        for (let i = 0; i < entries.length; i++) {
+                            await traverseFileTree(entries[i], path + item.name + "/");
+                        }
+                    }
+                };
+                const promises = [];
+                for (let i = 0; i < items.length; i++) {
+                    const entry = items[i].webkitGetAsEntry();
+                    if (entry) {
+                        promises.push(traverseFileTree(entry));
+                    }
+                }
+                await Promise.all(promises);
+                if (allFiles.length > 0) {
+                    handleFileSelect(allFiles);
+                } else {
+                    handleFileSelect(e.dataTransfer.files);
+                }
             }
         });
     }
@@ -712,6 +792,30 @@ style.textContent = `
         .upload-header {
             padding: 1.5rem;
         }
+    }
+    .upload-path-info {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding: 0.8rem 1.2rem;
+        background: var(--background);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        border: 1px solid transparent;
+        background-image: linear-gradient(var(--background), var(--background)), var(--primary-gradient);
+        background-origin: border-box;
+        background-clip: padding-box, border-box;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+    }
+    .upload-path-info:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    }
+    .upload-path-info i {
+        color: var(--primary-color);
     }
 `;
 document.head.appendChild(style);

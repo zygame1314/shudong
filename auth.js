@@ -1,6 +1,6 @@
 const authSection = document.getElementById('auth-section');
 const loginButton = document.getElementById('login-button');
-const uploadLink = document.getElementById('upload-link');
+const uploadLink = document.getElementById('upload-btn-link');
 const authStatusSpan = document.getElementById('auth-status');
 const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
 let isAuthenticated = false;
@@ -345,17 +345,10 @@ function updateUIBasedOnAuth() {
             loginButton.style.background = 'var(--success-color)';
             loginButton.style.cursor = 'not-allowed';
         }
-        if (authSection) {
-            let uploadBtn = document.getElementById('upload-btn-link');
-            if (!uploadBtn) {
-                uploadBtn = document.createElement('a');
-                uploadBtn.id = 'upload-btn-link';
-                uploadBtn.className = 'primary-btn';
-                uploadBtn.innerHTML = `<i class="fas fa-upload"></i><span>上传</span>`;
-                authSection.appendChild(uploadBtn);
-            }
-            uploadBtn.href = 'upload.html';
-            uploadBtn.style.display = 'inline-flex';
+        if (uploadLink) {
+            const currentPath = typeof getCurrentPath === 'function' ? getCurrentPath() : '';
+            uploadLink.href = `upload.html${currentPath ? '?path=' + encodeURIComponent(currentPath) : ''}`;
+            uploadLink.style.display = 'inline-flex';
         }
         if (authStatusSpan) {
             authStatusSpan.textContent = '状态：已验证';

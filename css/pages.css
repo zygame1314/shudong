@@ -374,6 +374,7 @@
 .file-meta {
     font-size: 0.8rem;
     color: var(--text-secondary);
+    line-height: 1.4;
 }
 
 .file-actions {

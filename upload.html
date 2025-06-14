@@ -81,6 +81,10 @@
                     </div>
 
                     <form id="upload-form" class="upload-form">
+                        <div id="upload-path-info" class="upload-path-info" style="display: none;">
+                            <i class="fas fa-folder-open"></i>
+                            <span></span>
+                        </div>
                         <div class="file-drop-zone" id="file-drop-zone">
                             <div class="drop-zone-content">
                                 <div class="drop-zone-icon">
@@ -94,7 +98,7 @@
                                     <span>支持: PDF, DOC, PPT, XLS, 图片, 视频等</span>
                                 </div>
                             </div>
-                            <input type="file" id="file-input" name="file" required hidden multiple webkitdirectory>
+                            <input type="file" id="file-input" name="file" hidden multiple webkitdirectory>
                         </div>
 
                         <div id="selected-file-info" class="selected-file-info" style="display: none;">

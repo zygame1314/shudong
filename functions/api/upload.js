@@ -63,6 +63,13 @@ export async function onRequestPost({ request, env }) {
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
+    const MAX_FILE_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      return new Response(JSON.stringify({ success: false, error: 'File size exceeds the 100MB limit.' }), {
+        status: 413,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
     try {
       const uploadedObject = await R2_BUCKET.put(filename, await file.arrayBuffer(), {
         httpMetadata: { contentType: file.type },

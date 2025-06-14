@@ -73,6 +73,34 @@ function formatBytes(bytes, decimals = 2) {
     const size = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
     return (isNaN(size) ? 0 : size) + ' ' + sizes[i];
 }
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    let interval = seconds / 31536000;
+    if (interval > 1) {
+        return Math.floor(interval) + " 年前";
+    }
+    interval = seconds / 2592000;
+    if (interval > 1) {
+        return Math.floor(interval) + " 个月前";
+    }
+    interval = seconds / 86400;
+    if (interval > 1) {
+        return Math.floor(interval) + " 天前";
+    }
+    interval = seconds / 3600;
+    if (interval > 1) {
+        return Math.floor(interval) + " 小时前";
+    }
+    interval = seconds / 60;
+    if (interval > 1) {
+        return Math.floor(interval) + " 分钟前";
+    }
+    return "刚刚";
+}
 function getFileIcon(fileName, isDirectory = false) {
     if (isDirectory) return 'fas fa-folder';
     const ext = fileName.toLowerCase().split('.').pop();
@@ -238,14 +266,20 @@ async function deleteFile(key, isDirectory) {
             showNotification("无法预览：未获取到验证口令。", 'error');
             return;
         }
-        let previewUrl;
+
+        const previewLoader = previewModal.querySelector('.preview-loader');
+        
+        previewTitle.textContent = `预览: ${fileName}`;
+        previewModal.classList.add('visible');
+        previewLoader.style.display = 'flex';
+        previewIframe.style.display = 'none';
+        const existingImage = previewModal.querySelector('.preview-image');
+        if (existingImage) {
+            existingImage.remove();
+        }
+
         try {
             let isImagePreview = imageExtensions.includes(extension);
-            previewIframe.style.display = 'none';
-            const existingImage = previewModal.querySelector('.preview-image');
-            if (existingImage) {
-                existingImage.remove();
-            }
             if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
                 const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
                     headers: { 'Authorization': `Bearer ${password}` }
@@ -254,39 +288,58 @@ async function deleteFile(key, isDirectory) {
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || '无法获取文件预览链接');
                 }
-                previewUrl = data.url;
+                const previewUrl = data.url;
+
+                const hideLoader = () => {
+                    previewLoader.style.display = 'none';
+                };
+
                 if (isImagePreview) {
                     const img = document.createElement('img');
                     img.src = previewUrl;
                     img.className = 'preview-image';
-                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: auto;';
+                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
+                    img.onload = () => {
+                        hideLoader();
+                        img.style.display = 'block';
+                    };
+                    img.onerror = () => {
+                        hideLoader();
+                        showNotification('图片加载失败', 'error');
+                    };
                     previewIframe.parentElement.appendChild(img);
-                } else if (officeExtensions.includes(extension)) {
-                    const xdocinBaseUrl = "https://view.xdocin.com/view";
-                    const params = new URLSearchParams({
-                        src: previewUrl,
-                        title: fileName,
-                        printable: 'false',
-                        copyable: 'false',
-                        watermark: '生科树洞'
-                    });
-                    previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
-                    previewIframe.style.display = 'block';
                 } else {
-                    previewIframe.src = previewUrl;
+                    previewIframe.onload = hideLoader;
+                    previewIframe.onerror = () => {
+                        hideLoader();
+                        showNotification('预览加载失败', 'error');
+                    };
+
+                    if (officeExtensions.includes(extension)) {
+                        const xdocinBaseUrl = "https://view.xdocin.com/view";
+                        const params = new URLSearchParams({
+                            src: previewUrl,
+                            title: fileName,
+                            printable: 'false',
+                            copyable: 'false',
+                            watermark: '生科树洞'
+                        });
+                        previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
+                    } else {
+                        previewIframe.src = previewUrl;
+                    }
                     previewIframe.style.display = 'block';
                 }
             } else {
                 showNotification('该文件类型不支持预览。', 'info');
+                previewModal.classList.remove('visible');
                 return;
-            }
-            if (previewModal && previewTitle) {
-                previewTitle.textContent = `预览: ${fileName}`;
-                previewModal.classList.add('visible');
             }
         } catch (error) {
             console.error("预览文件时出错:", error);
             showNotification(`预览失败: ${error.message}`, 'error');
+            previewLoader.style.display = 'none';
+            previewModal.classList.remove('visible');
         }
     }
     function showNotification(message, type = 'info') {
@@ -400,7 +453,7 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
             </div>
             <div class="file-info">
                 <div class="file-name">${item.name}</div>
-                ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • 文件</div>` : '<div class="file-meta">文件夹</div>'}
+                ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)}</div>` : '<div class="file-meta">文件夹</div>'}
             </div>
         </div>
         <div class="file-actions">
