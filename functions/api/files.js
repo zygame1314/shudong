@@ -22,7 +22,7 @@ function verifyPassword(request, env) {
   return providedPassword === correctPassword;
 }
 
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
 
 export async function onRequestGet({ request, env }) {
   if (!verifyPassword(request, env)) {

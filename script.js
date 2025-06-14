@@ -25,7 +25,7 @@ let selectedItems = new Set();
 
 let currentPage = 1;
 let totalPages = 1;
-let itemsPerPage = 50;
+let itemsPerPage = 20;
 let currentTotalItems = 0;
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
