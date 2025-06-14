@@ -172,6 +172,53 @@ async function downloadFile(fileKey) {
         }, 5000);
     }
 }
+async function deleteFile(key, isDirectory) {
+    const adminPassword = prompt(`请输入管理员密码以删除 ${isDirectory ? '文件夹' : '文件'}:\\n${key}`);
+    if (!adminPassword) {
+        showNotification('已取消删除操作', 'info');
+        return;
+    }
+    const password = getAuthPassword();
+    if (!password) {
+        showNotification("无法删除：未获取到验证口令。请重新验证。", 'error');
+        return;
+    }
+    const confirmation = confirm(`确定要删除 ${key} 吗？此操作不可逆！`);
+    if (!confirmation) {
+        showNotification('已取消删除操作', 'info');
+        return;
+    }
+    try {
+        const response = await fetch(`${FILES_API_URL}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({
+                key: key,
+                adminPassword: adminPassword
+            }),
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
+            const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+            if (directoryCache[currentPrefix]) {
+                delete directoryCache[currentPrefix];
+            }
+            if (directoryCache[parentPrefix]) {
+                delete directoryCache[parentPrefix];
+            }
+            fetchAndDisplayFiles(currentPrefix);
+        } else {
+            showNotification(`删除失败: ${result.error || '未知错误'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`删除请求出错: ${error.message}`, 'error');
+        console.error('删除请求出错:', error);
+    }
+}
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
@@ -292,8 +339,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
                     <i class="fas fa-download"></i>
                     下载
                 </button>
-                <span class="download-status" id="status-${item.key.replace(/[^a-zA-Z0-9]/g, '-')}"></span>
             ` : ''}
+            <button class="delete-button" onclick="deleteFile('${item.key}', ${isDirectory})">
+                <i class="fas fa-trash"></i>
+            </button>
         </div>
     `;
     if (isDirectory) {
@@ -582,6 +631,23 @@ style.textContent = `
     .file-list-item:hover {
         transform: translateY(-2px);
         transition: transform 0.2s ease;
+    }
+    .delete-button {
+        background: transparent;
+        border: 1px solid var(--accent-color);
+        color: var(--accent-color);
+        padding: 0.4rem 0.8rem;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-left: 0.5rem;
+        font-size: 0.8rem;
+    }
+    .delete-button:hover {
+        background: var(--accent-color);
+        color: white;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
     }
     .notification {
         animation: slideInRight 0.3s ease;
