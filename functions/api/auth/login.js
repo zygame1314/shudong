@@ -1,5 +1,5 @@
 import { SignJWT } from 'https://esm.sh/jose@5.6.3';
-import { HTMLRewriter } from 'htmlrewriter';
+import { HTMLRewriter } from 'https://esm.sh/html-rewriter';
 class CookieJar {
     constructor() {
         this.cookies = new Map();
