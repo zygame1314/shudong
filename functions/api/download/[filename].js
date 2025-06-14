@@ -12,6 +12,20 @@ const addCorsHeaders = (headers = {}) => {
 };
 
 
+async function verifyToken(key, token, expires, secret) {
+  if (!token || !expires) return false;
+  if (Date.now() > parseInt(expires, 10)) return false;
+
+  const tokenPayload = `${key}:${expires}`;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signatureData = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(tokenPayload));
+  const expectedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureData))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+  return token === expectedSignature;
+}
+
 function verifyPassword(request, env) {
   const correctPassword = env.AUTH_PASSWORD;
   if (!correctPassword) {
@@ -29,15 +43,33 @@ function verifyPassword(request, env) {
 }
 
 export async function onRequestGet({ request, env, params }) {
-  const filename = decodeURIComponent(params.filename);
-  if (!filename) {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+  const expires = url.searchParams.get('expires');
+  const key = decodeURIComponent(params.filename);
+
+  if (!key) {
     return new Response(JSON.stringify({ success: false, error: 'Filename missing in URL path.' }), {
       status: 400,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
 
-  if (!verifyPassword(request, env)) {
+  let isAuthorized = false;
+  if (token && expires) {
+    const secret = env.PREVIEW_SECRET || 'default-secret';
+    isAuthorized = await verifyToken(key, token, expires, secret);
+    if (!isAuthorized) {
+       return new Response(JSON.stringify({ success: false, error: 'Invalid or expired token.' }), {
+        status: 403,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+  } else {
+    isAuthorized = verifyPassword(request, env);
+  }
+
+  if (!isAuthorized) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
       status: 401,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
@@ -54,7 +86,7 @@ export async function onRequestGet({ request, env, params }) {
   }
 
   try {
-    const object = await R2_BUCKET.get(filename);
+    const object = await R2_BUCKET.get(key);
 
     if (object === null) {
       return new Response(JSON.stringify({ success: false, error: 'File not found.' }), {
@@ -65,8 +97,11 @@ export async function onRequestGet({ request, env, params }) {
 
     const baseHeaders = new Headers();
     object.writeHttpMetadata(baseHeaders);
-    const encodedFilename = encodeURIComponent(filename);
-    baseHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}; filename="${filename}"`);
+    const encodedFilename = encodeURIComponent(key.split('/').pop());
+    // For preview, we might not want to force download
+    if (!token) {
+        baseHeaders.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}; filename="${encodedFilename}"`);
+    }
     baseHeaders.set('Content-Length', object.size.toString());
 
     const finalHeaders = addCorsHeaders(baseHeaders);
@@ -77,7 +112,7 @@ export async function onRequestGet({ request, env, params }) {
     });
 
   } catch (error) {
-    console.error(`Error fetching file ${filename} from R2:`, error);
+    console.error(`Error fetching file ${key} from R2:`, error);
     return new Response(JSON.stringify({ success: false, error: 'Failed to retrieve file.' }), {
       status: 500,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),

@@ -6,6 +6,11 @@ const themeToggle = document.getElementById('theme-toggle');
 const fileCountElement = document.getElementById('file-count');
 const viewButtons = document.querySelectorAll('.view-btn');
 const filterButtons = document.querySelectorAll('.filter-btn');
+const fileListContainer = document.querySelector('.file-list-container');
+const previewModal = document.getElementById('preview-modal');
+const previewTitle = document.getElementById('preview-title');
+const previewIframe = document.getElementById('preview-iframe');
+const closePreviewBtn = document.getElementById('close-preview');
 const API_BASE_URL = 'https://shudong.zygame1314.site';
 const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
@@ -173,55 +178,98 @@ async function downloadFile(fileKey) {
     }
 }
 async function deleteFile(key, isDirectory) {
-    const adminPassword = prompt(`请输入管理员密码以删除 ${isDirectory ? '文件夹' : '文件'}:\\n${key}`);
-    if (!adminPassword) {
-        showNotification('已取消删除操作', 'info');
-        return;
-    }
-    const password = getAuthPassword();
-    if (!password) {
-        showNotification("无法删除：未获取到验证口令。请重新验证。", 'error');
-        return;
-    }
-    const confirmation = confirm(`确定要删除 ${key} 吗？此操作不可逆！`);
-    if (!confirmation) {
-        showNotification('已取消删除操作', 'info');
-        return;
-    }
     try {
-        const response = await fetch(`${FILES_API_URL}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${password}`,
-            },
-            body: JSON.stringify({
-                key: key,
-                adminPassword: adminPassword
-            }),
+        await createAuthModal({
+            title: '确认删除',
+            subtitle: `你确定要永久删除 "${key}" 吗？此操作不可逆！`,
+            placeholder: '请输入管理员密码以确认删除',
+            buttonText: '确认删除',
+            iconClass: 'fa-exclamation-triangle',
+            action: async (adminPassword) => {
+                const password = getAuthPassword();
+                if (!password) {
+                    throw new Error("无法删除：未获取到验证口令。请重新验证。");
+                }
+                const response = await fetch(`${FILES_API_URL}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${password}`,
+                    },
+                    body: JSON.stringify({
+                        key: key,
+                        adminPassword: adminPassword
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || '删除失败，请检查管理员密码或稍后重试');
+                }
+                showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
+                const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+                if (directoryCache[currentPrefix]) {
+                    delete directoryCache[currentPrefix];
+                }
+                if (directoryCache[parentPrefix]) {
+                    delete directoryCache[parentPrefix];
+                }
+                fetchAndDisplayFiles(currentPrefix);
+            }
         });
-        const result = await response.json();
-        if (response.ok && result.success) {
-            showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
-            const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
-            if (directoryCache[currentPrefix]) {
-                delete directoryCache[currentPrefix];
-            }
-            if (directoryCache[parentPrefix]) {
-                delete directoryCache[parentPrefix];
-            }
-            fetchAndDisplayFiles(currentPrefix);
-        } else {
-            showNotification(`删除失败: ${result.error || '未知错误'}`, 'error');
-        }
     } catch (error) {
-        showNotification(`删除请求出错: ${error.message}`, 'error');
-        console.error('删除请求出错:', error);
+        if (error.message !== '用户取消验证') {
+            showNotification(`删除操作失败: ${error.message}`, 'error');
+        } else {
+            showNotification('删除操作已取消', 'info');
+        }
+        console.log('删除操作处理完毕:', error.message);
+        }
     }
-}
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
+    async function previewFile(fileKey, fileName) {
+        const extension = fileName.split('.').pop().toLowerCase();
+        const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+        const password = getAuthPassword();
+        if (!password) {
+            showNotification("无法预览：未获取到验证口令。", 'error');
+            return;
+        }
+        let previewUrl;
+        try {
+            if (extension === 'pdf') {
+                const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
+                    headers: { 'Authorization': `Bearer ${password}` }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '无法获取PDF预览链接');
+                }
+                previewUrl = data.url;
+            } else if (officeExtensions.includes(extension)) {
+                const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
+                    headers: { 'Authorization': `Bearer ${password}` }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '无法获取Office文件预览链接');
+                }
+                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(data.url)}`;
+            } else {
+                showNotification('该文件类型不支持预览。', 'info');
+                return;
+            }
+            if (previewModal && previewIframe && previewTitle) {
+                previewTitle.textContent = `预览: ${fileName}`;
+                previewIframe.src = previewUrl;
+                previewModal.classList.add('visible');
+            }
+        } catch (error) {
+            console.error("预览文件时出错:", error);
+            showNotification(`预览失败: ${error.message}`, 'error');
+        }
+    }
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
     notification.style.cssText = `
         position: fixed;
         top: 20px;
@@ -335,6 +383,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
         </div>
         <div class="file-actions">
             ${!isDirectory ? `
+                <button class="preview-button" onclick="previewFile('${item.key}', '${item.name}')">
+                    <i class="fas fa-eye"></i>
+                    预览
+                </button>
                 <button class="download-button" onclick="downloadFile('${item.key}')">
                     <i class="fas fa-download"></i>
                     下载
@@ -585,6 +637,9 @@ document.addEventListener('DOMContentLoaded', () => {
             viewButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentView = btn.dataset.view;
+            if (fileListContainer) {
+                fileListContainer.classList.toggle('grid-view', currentView === 'grid');
+            }
         });
     });
     filterButtons.forEach(btn => {
@@ -597,6 +652,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+    if (closePreviewBtn && previewModal) {
+        closePreviewBtn.addEventListener('click', () => {
+            previewModal.classList.remove('visible');
+            previewIframe.src = '';
+        });
+        previewModal.addEventListener('click', (e) => {
+            if (e.target === previewModal) {
+                previewModal.classList.remove('visible');
+                previewIframe.src = '';
+            }
+        });
+    }
 });
 if (searchButton && searchInput) {
     const performSearch = () => {

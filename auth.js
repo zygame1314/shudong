@@ -2,13 +2,19 @@ const authSection = document.getElementById('auth-section');
 const loginButton = document.getElementById('login-button');
 const uploadLink = document.getElementById('upload-link');
 const authStatusSpan = document.getElementById('auth-status');
-
 const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
-
 let isAuthenticated = false;
 let currentPassword = null;
-
-function createAuthModal() {
+function createAuthModal(options = {}) {
+    const {
+        title = '身份验证',
+        subtitle = '请输入访问口令以继续',
+        placeholder = '请输入访问口令',
+        buttonText = '验证',
+        iconClass = 'fa-key',
+        performValidation = true,
+        action = null
+    } = options;
     const modal = document.createElement('div');
     modal.className = 'auth-modal';
     modal.style.cssText = `
@@ -26,7 +32,6 @@ function createAuthModal() {
         opacity: 0;
         transition: opacity 0.3s ease;
     `;
-
     const modalContent = document.createElement('div');
     modalContent.style.cssText = `
         background: var(--background);
@@ -39,22 +44,20 @@ function createAuthModal() {
         transition: transform 0.3s ease;
         border: 1px solid var(--border-color);
     `;
-
     modalContent.innerHTML = `
         <div style="text-align: center; margin-bottom: 2rem;">
             <div style="width: 60px; height: 60px; background: var(--primary-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; box-shadow: var(--shadow-medium);">
-                <i class="fas fa-key" style="color: white; font-size: 1.5rem;"></i>
+                <i class="fas ${iconClass}" style="color: white; font-size: 1.5rem;"></i>
             </div>
-            <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 600;">身份验证</h2>
-            <p style="margin: 0.5rem 0 0; color: var(--text-secondary); font-size: 0.9rem;">请输入访问口令以继续</p>
+            <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 600;">${title}</h2>
+            <p style="margin: 0.5rem 0 0; color: var(--text-secondary); font-size: 0.9rem;">${subtitle}</p>
         </div>
-        
         <div style="margin-bottom: 2rem;">
             <div style="position: relative;">
                 <i class="fas fa-lock" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
-                <input type="password" id="auth-password-input" placeholder="请输入访问口令" style="
+                <input type="password" id="auth-password-input" placeholder="${placeholder}" style="
                     width: 100%;
-                    padding: 1rem 1rem 1rem 3rem;
+                    padding: 1rem 3.5rem 1rem 3rem;
                     border: 2px solid var(--border-color);
                     border-radius: 12px;
                     font-size: 1rem;
@@ -63,10 +66,10 @@ function createAuthModal() {
                     transition: all 0.3s ease;
                     box-sizing: border-box;
                 ">
+                <i class="fas fa-eye" id="toggle-password-visibility" style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); cursor: pointer; transition: color 0.2s;"></i>
             </div>
             <div id="auth-error" style="margin-top: 0.5rem; color: var(--accent-color); font-size: 0.8rem; min-height: 1rem;"></div>
         </div>
-        
         <div style="display: flex; gap: 1rem;">
             <button id="auth-cancel-btn" style="
                 flex: 1;
@@ -95,10 +98,9 @@ function createAuthModal() {
                 gap: 0.5rem;
             ">
                 <i class="fas fa-sign-in-alt"></i>
-                <span>验证</span>
+                <span>${buttonText}</span>
             </button>
         </div>
-        
         <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color); text-align: center;">
             <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: var(--text-secondary); font-size: 0.8rem;">
                 <i class="fas fa-info-circle"></i>
@@ -106,52 +108,49 @@ function createAuthModal() {
             </div>
         </div>
     `;
-
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
-
     setTimeout(() => {
         modal.style.opacity = '1';
         modalContent.style.transform = 'translateY(0)';
     }, 50);
-
     const passwordInput = modal.querySelector('#auth-password-input');
     const submitBtn = modal.querySelector('#auth-submit-btn');
     const cancelBtn = modal.querySelector('#auth-cancel-btn');
     const errorDiv = modal.querySelector('#auth-error');
-
+    const togglePasswordBtn = modal.querySelector('#toggle-password-visibility');
     passwordInput.focus();
-    
+    togglePasswordBtn.addEventListener('click', () => {
+        const isPassword = passwordInput.type === 'password';
+        passwordInput.type = isPassword ? 'text' : 'password';
+        togglePasswordBtn.classList.toggle('fa-eye', !isPassword);
+        togglePasswordBtn.classList.toggle('fa-eye-slash', isPassword);
+        togglePasswordBtn.style.color = isPassword ? 'var(--primary-color)' : 'var(--text-secondary)';
+    });
     passwordInput.addEventListener('focus', () => {
         passwordInput.style.borderColor = 'var(--primary-color)';
         passwordInput.style.boxShadow = '0 0 0 3px rgba(46, 139, 87, 0.1)';
     });
-    
     passwordInput.addEventListener('blur', () => {
         passwordInput.style.borderColor = 'var(--border-color)';
         passwordInput.style.boxShadow = 'none';
     });
-
     cancelBtn.addEventListener('mouseenter', () => {
         cancelBtn.style.background = 'var(--border-color)';
         cancelBtn.style.transform = 'translateY(-1px)';
     });
-    
     cancelBtn.addEventListener('mouseleave', () => {
         cancelBtn.style.background = 'var(--background-dark)';
         cancelBtn.style.transform = 'translateY(0)';
     });
-
     submitBtn.addEventListener('mouseenter', () => {
         submitBtn.style.transform = 'translateY(-1px)';
         submitBtn.style.boxShadow = 'var(--shadow-medium)';
     });
-    
     submitBtn.addEventListener('mouseleave', () => {
         submitBtn.style.transform = 'translateY(0)';
         submitBtn.style.boxShadow = 'none';
     });
-
     function setLoading(loading) {
         if (loading) {
             submitBtn.disabled = true;
@@ -165,11 +164,10 @@ function createAuthModal() {
             submitBtn.style.opacity = '1';
             submitBtn.innerHTML = `
                 <i class="fas fa-sign-in-alt"></i>
-                <span>验证</span>
+                <span>${buttonText}</span>
             `;
         }
     }
-
     function showError(message) {
         errorDiv.textContent = message;
         errorDiv.style.color = 'var(--accent-color)';
@@ -179,26 +177,58 @@ function createAuthModal() {
             passwordInput.style.animation = '';
         }, 300);
     }
-
     function closeModal() {
         modal.style.opacity = '0';
         modalContent.style.transform = 'translateY(20px)';
         setTimeout(() => {
-            document.body.removeChild(modal);
+            if (modal.parentNode) {
+                document.body.removeChild(modal);
+            }
         }, 300);
     }
-
     return new Promise((resolve, reject) => {
         async function handleSubmit() {
             const password = passwordInput.value.trim();
             if (!password) {
-                showError('请输入访问口令');
+                showError('输入不能为空');
                 return;
             }
-
+            if (action) {
+                setLoading(true);
+                errorDiv.textContent = '';
+                try {
+                    await action(password);
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = `
+                        <i class="fas fa-check"></i>
+                        <span>操作成功</span>
+                    `;
+                    submitBtn.style.background = 'var(--success-color)';
+                    setTimeout(() => {
+                        closeModal();
+                        resolve(password);
+                    }, 1000);
+                } catch (error) {
+                    setLoading(false);
+                    showError(error.message || '操作失败');
+                }
+                return;
+            }
+            if (!performValidation) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = `
+                    <i class="fas fa-check"></i>
+                    <span>已确认</span>
+                `;
+                submitBtn.style.background = 'var(--success-color)';
+                setTimeout(() => {
+                    closeModal();
+                    resolve(password);
+                }, 500);
+                return;
+            }
             setLoading(true);
             errorDiv.textContent = '';
-
             try {
                 const response = await fetch(AUTH_API_URL, {
                     method: 'POST',
@@ -207,16 +237,13 @@ function createAuthModal() {
                     },
                     body: JSON.stringify({ password: password }),
                 });
-
                 const result = await response.json();
-
                 if (response.ok && result.success) {
                     submitBtn.innerHTML = `
                         <i class="fas fa-check"></i>
                         <span>验证成功</span>
                     `;
                     submitBtn.style.background = 'var(--success-color)';
-                    
                     setTimeout(() => {
                         closeModal();
                         resolve(password);
@@ -231,15 +258,12 @@ function createAuthModal() {
                 console.error("验证请求出错:", error);
             }
         }
-
         function handleCancel() {
             closeModal();
             reject(new Error('用户取消验证'));
         }
-
         submitBtn.addEventListener('click', handleSubmit);
         cancelBtn.addEventListener('click', handleCancel);
-        
         passwordInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 handleSubmit();
@@ -247,7 +271,6 @@ function createAuthModal() {
                 handleCancel();
             }
         });
-
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 handleCancel();
@@ -255,43 +278,41 @@ function createAuthModal() {
         });
     });
 }
-
 async function checkAuth() {
     try {
-        const password = await createAuthModal();
-        
+        const password = await createAuthModal({
+            title: '身份验证',
+            subtitle: '请输入访问口令以继续',
+            placeholder: '请输入访问口令',
+            buttonText: '验证',
+            iconClass: 'fa-key',
+            performValidation: true
+        });
         isAuthenticated = true;
         currentPassword = password;
-        
         const expiryTime = new Date().getTime() + 24 * 60 * 60 * 1000;
         const authData = {
             password: password,
             expiry: expiryTime
         };
         localStorage.setItem('authData', JSON.stringify(authData));
-        
         updateUIBasedOnAuth();
-        
         document.dispatchEvent(new CustomEvent('authSuccess', {
             detail: { password: currentPassword }
         }));
-        
         if (typeof showNotification === 'function') {
             showNotification('身份验证成功！欢迎回到生科树洞', 'success');
         }
-        
     } catch (error) {
         console.log('用户取消验证或验证失败:', error.message);
     }
 }
-
 function checkStoredAuth() {
     const storedAuthData = localStorage.getItem('authData');
     if (storedAuthData) {
         try {
             const authData = JSON.parse(storedAuthData);
             const now = new Date().getTime();
-
             if (authData.expiry && authData.expiry > now && authData.password) {
                 isAuthenticated = true;
                 currentPassword = authData.password;
@@ -313,7 +334,6 @@ function checkStoredAuth() {
     currentPassword = null;
     return false;
 }
-
 function updateUIBasedOnAuth() {
     if (isAuthenticated) {
         if (loginButton) {
@@ -352,26 +372,21 @@ function updateUIBasedOnAuth() {
         }
     }
 }
-
 function isUserAuthenticated() {
     return isAuthenticated;
 }
-
 function getAuthPassword() {
     return currentPassword;
 }
-
 function logout() {
     isAuthenticated = false;
     currentPassword = null;
     localStorage.removeItem('authData');
     console.log('用户登出，清除验证信息');
     updateUIBasedOnAuth();
-    
     if (typeof directoryCache !== 'undefined') {
         Object.keys(directoryCache).forEach(key => delete directoryCache[key]);
     }
-    
     const fileListElement = document.getElementById('file-list');
     if (fileListElement) {
         fileListElement.innerHTML = `
@@ -381,20 +396,16 @@ function logout() {
             </li>
         `;
     }
-    
     if (typeof showNotification === 'function') {
         showNotification('已安全登出', 'info');
     }
 }
-
 if (loginButton) {
     loginButton.addEventListener('click', checkAuth);
 }
-
 document.addEventListener('DOMContentLoaded', () => {
     checkStoredAuth();
     updateUIBasedOnAuth();
-    
     const style = document.createElement('style');
     style.textContent = `
         @keyframes shake {
@@ -402,22 +413,22 @@ document.addEventListener('DOMContentLoaded', () => {
             25% { transform: translateX(-5px); }
             75% { transform: translateX(5px); }
         }
-        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
         .auth-modal input:focus {
             outline: none;
         }
-        
         .auth-modal button:disabled {
             cursor: not-allowed !important;
+        }
+        #auth-password-input::-ms-reveal,
+        #auth-password-input::-webkit-reveal {
+            display: none;
         }
     `;
     document.head.appendChild(style);
 });
-
 window.checkAuth = checkAuth;
 window.logout = logout;
