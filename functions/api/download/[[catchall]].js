@@ -29,7 +29,7 @@ function verifyPassword(request, env) {
   return providedPassword === correctPassword;
 }
 export async function onRequestGet({ request, env, params }) {
-  const segments = params.segments || [];
+  const segments = params.catchall || [];
   let isAuthorized = false;
   let key = '';
   let isTokenAuth = false;
