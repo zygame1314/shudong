@@ -18,7 +18,7 @@ class CookieJar {
 
     addFromHeaders(setCookieArray) {
         if (!setCookieArray || setCookieArray.length === 0) return;
-        
+
         setCookieArray.forEach(cookieString => {
             const parts = cookieString.split(';')[0].split('=');
             if (parts.length >= 2 && parts[0] && parts[1]) {
@@ -26,6 +26,7 @@ class CookieJar {
             }
         });
     }
+
     toHeaderString() {
         return Array.from(this.cookies.entries())
             .map(([key, value]) => `${key}=${value}`)
@@ -35,11 +36,14 @@ class CookieJar {
 async function getLoginPrerequisites(url, cookieJar, userAgent) {
     let lt = '', execution = '';
     const response = await fetch(url, { headers: { 'User-Agent': userAgent } });
-    cookieJar.addFromHeaders(response.headers.get('set-cookie'));
+
+    cookieJar.addFromHeaders(response.headers.getSetCookie());
+
     const transformedResponse = new HTMLRewriter()
         .on('input[name="lt"]', { element(el) { lt = el.getAttribute('value'); } })
         .on('input[name="execution"]', { element(el) { execution = el.getAttribute('value'); } })
         .transform(response);
+
     await transformedResponse.text();
     if (!lt || !execution) {
         throw new Error('无法从登录页获取动态表单参数(lt/execution)。');
@@ -58,17 +62,22 @@ async function performLoginAndRedirects(url, formData, cookieJar, userAgent) {
         body: formData.toString(),
         redirect: 'manual'
     });
+
     if (postResponse.status !== 302) {
         throw new Error('学号或密码错误。');
     }
-    cookieJar.addFromHeaders(postResponse.headers.get('set-cookie'));
+
+    cookieJar.addFromHeaders(postResponse.headers.getSetCookie());
     let nextUrl = postResponse.headers.get('location');
+
     for (let i = 0; i < 10; i++) {
         const redirectResponse = await fetch(nextUrl, {
             headers: { 'User-Agent': userAgent, 'Cookie': cookieJar.toHeaderString() },
             redirect: 'manual'
         });
-        cookieJar.addFromHeaders(redirectResponse.headers.get('set-cookie'));
+
+        cookieJar.addFromHeaders(redirectResponse.headers.getSetCookie());
+
         if (redirectResponse.status >= 200 && redirectResponse.status < 300) break;
         if (redirectResponse.status === 301 || redirectResponse.status === 302 || redirectResponse.status === 303) {
             const location = redirectResponse.headers.get('location');
@@ -78,27 +87,6 @@ async function performLoginAndRedirects(url, formData, cookieJar, userAgent) {
             throw new Error(`重定向链中断，状态码: ${redirectResponse.status}`);
         }
     }
-}
-async function verifySessionAndGetUser(cookieJar, userAgent) {
-    const apiUrl = `https://one.ccnu.edu.cn/getLoginUser?_t=${Math.random()}`;
-    const response = await fetch(apiUrl, {
-        headers: {
-            'User-Agent': userAgent,
-            'Cookie': cookieJar.toHeaderString(),
-            'X-Requested-With': 'XMLHttpRequest',
-            'Referer': 'https://one.ccnu.edu.cn/default/index.html'
-        }
-    });
-    const userInfo = await response.json();
-    if (userInfo.errcode !== '0' || !userInfo.data || !userInfo.data.userAccount) {
-        throw new Error('会话无效或无法获取用户信息。');
-    }
-    return {
-        account: userInfo.data.userAccount,
-        name: userInfo.data.userName,
-        category: userInfo.data.categoryName,
-        isLifer: userInfo.data.deptName.includes("生命科学")
-    };
 }
 async function issueInternalJwt(userData, jwtSecret) {
     const secret = new TextEncoder().encode(jwtSecret);
