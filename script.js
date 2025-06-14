@@ -127,7 +127,7 @@ async function downloadFile(fileKey) {
         showNotification("无法下载：未获取到验证口令。请重新验证。", 'error');
         return;
     }
-    const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${fileKey}`;
+    const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${encodeURIComponent(fileKey)}`;
     const statusElementId = `status-${fileKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
     const statusElement = document.getElementById(statusElementId);
     const downloadBtn = document.querySelector(`[onclick*="${fileKey}"]`);
@@ -229,13 +229,18 @@ async function deleteFile(key, isDirectory) {
         const extension = fileName.split('.').pop().toLowerCase();
         const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
         const password = getAuthPassword();
+    
         if (!password) {
             showNotification("无法预览：未获取到验证口令。", 'error');
             return;
         }
+    
         let previewUrl;
+    
         try {
             if (extension === 'pdf') {
+                // For PDF, we can try to get a signed URL as well for consistency, or use direct download link if it works.
+                // Let's use a signed URL for PDFs too, to be safe with potential browser restrictions.
                 const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
                     headers: { 'Authorization': `Bearer ${password}` }
                 });
@@ -244,6 +249,7 @@ async function deleteFile(key, isDirectory) {
                     throw new Error(data.error || '无法获取PDF预览链接');
                 }
                 previewUrl = data.url;
+    
             } else if (officeExtensions.includes(extension)) {
                 const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
                     headers: { 'Authorization': `Bearer ${password}` }
@@ -252,11 +258,14 @@ async function deleteFile(key, isDirectory) {
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || '无法获取Office文件预览链接');
                 }
-                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${data.url}`;
+                // Now use the signed URL with Microsoft's viewer
+                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(data.url)}`;
+            
             } else {
                 showNotification('该文件类型不支持预览。', 'info');
                 return;
             }
+    
             if (previewModal && previewIframe && previewTitle) {
                 previewTitle.textContent = `预览: ${fileName}`;
                 previewIframe.src = previewUrl;
