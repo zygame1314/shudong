@@ -1,4 +1,16 @@
 import { SignJWT } from 'jose';
+const addCorsHeaders = (headers = {}) => {
+  const allowedOrigin = '*';
+  const plainHeaders = headers instanceof Headers ? Object.fromEntries(headers.entries()) : headers;
+  return {
+    ...plainHeaders,
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+  };
+};
+
 class CookieJar {
     constructor() {
         this.cookies = new Map();
@@ -99,12 +111,12 @@ async function issueInternalJwt(userData, jwtSecret) {
 export async function onRequestPost({ request, env }) {
     if (!env.JWT_SECRET) {
         console.error("环境变量'JWT_SECRET'未设置！");
-        return new Response(JSON.stringify({ success: false, error: '服务器内部配置错误。' }), { status: 500 });
+        return new Response(JSON.stringify({ success: false, error: '服务器内部配置错误。' }), { status: 500, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
     }
     try {
         const { username, password } = await request.json();
         if (!username || !password) {
-            return new Response(JSON.stringify({ success: false, error: '需要提供学号和密码。' }), { status: 400 });
+            return new Response(JSON.stringify({ success: false, error: '需要提供学号和密码。' }), { status: 400, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
         }
         const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         const cookieJar = new CookieJar();
@@ -119,17 +131,23 @@ export async function onRequestPost({ request, env }) {
         const userData = await verifySessionAndGetUser(cookieJar, userAgent);
         const token = await issueInternalJwt(userData, env.JWT_SECRET);
         return new Response(JSON.stringify({ success: true, token, user: userData }), {
-            headers: { 'Content-Type': 'application/json' }
+            headers: addCorsHeaders({ 'Content-Type': 'application/json' })
         });
     } catch (error) {
         console.error("模拟登录流程失败:", error.message);
         const friendlyError = error.message.includes('学号或密码错误') ? error.message : '认证流程中发生未知错误。';
-        return new Response(JSON.stringify({ success: false, error: friendlyError }), { status: error.message.includes('学号或密码错误') ? 401 : 500 });
+        return new Response(JSON.stringify({ success: false, error: friendlyError }), { status: error.message.includes('学号或密码错误') ? 401 : 500, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
     }
 }
 export async function onRequest(context) {
+    if (context.request.method === 'OPTIONS') {
+        return new Response(null, {
+            status: 204,
+            headers: addCorsHeaders(),
+        });
+    }
     if (context.request.method === 'POST') {
         return onRequestPost(context);
     }
-    return new Response('Method Not Allowed', { status: 405 });
+    return new Response('Method Not Allowed', { status: 405, headers: addCorsHeaders() });
 }
