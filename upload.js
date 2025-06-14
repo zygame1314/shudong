@@ -13,8 +13,10 @@ const progressStatus = document.getElementById('progress-status');
 const passwordToggle = document.getElementById('password-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const UPLOAD_API_URL = `${API_BASE_URL}/api/upload`;
-let selectedFile = null;
+let selectedFiles = [];
 let isDragging = false;
+const urlParams = new URLSearchParams(window.location.search);
+const uploadPath = urlParams.get('path') || '';
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -121,12 +123,15 @@ function validateFile(file) {
     }
     return { valid: true };
 }
-function showSelectedFile(file) {
-    selectedFile = file;
-    const iconClass = getFileIcon(file.name);
+function showSelectedFile(files) {
+    selectedFiles = Array.from(files);
+    let totalSize = 0;
+    selectedFiles.forEach(file => totalSize += file.size);
+    const fileOrFolderName = selectedFiles.length === 1 ? selectedFiles[0].name : (selectedFiles[0].webkitRelativePath.split('/')[0] || '多个文件');
+    const iconClass = selectedFiles.length > 1 ? 'fas fa-folder' : getFileIcon(selectedFiles[0].name);
     selectedFileInfo.querySelector('.file-icon-preview i').className = iconClass;
-    selectedFileInfo.querySelector('.file-name').textContent = file.name;
-    selectedFileInfo.querySelector('.file-size').textContent = formatBytes(file.size);
+    selectedFileInfo.querySelector('.file-name').textContent = `${fileOrFolderName} (${selectedFiles.length}个文件)`;
+    selectedFileInfo.querySelector('.file-size').textContent = formatBytes(totalSize);
     selectedFileInfo.style.display = 'block';
     fileDropZone.style.display = 'none';
     selectedFileInfo.style.opacity = '0';
@@ -138,7 +143,7 @@ function showSelectedFile(file) {
     }, 50);
 }
 function clearSelectedFile() {
-    selectedFile = null;
+    selectedFiles = [];
     fileInput.value = '';
     selectedFileInfo.style.display = 'none';
     fileDropZone.style.display = 'flex';
@@ -212,19 +217,28 @@ function fillPasswordIfAuthenticated() {
         }
     }
 }
-function handleFileSelect(file) {
-    const validation = validateFile(file);
-    if (!validation.valid) {
-        showNotification(validation.error, 'error');
+function handleFileSelect(files) {
+    let allValid = true;
+    let totalSize = 0;
+    for (const file of files) {
+        totalSize += file.size;
+        const validation = validateFile(file);
+        if (!validation.valid) {
+            showNotification(`${file.name}: ${validation.error}`, 'error');
+            allValid = false;
+        }
+    }
+    if (!allValid) {
+        clearSelectedFile();
         return;
     }
-    showSelectedFile(file);
-    showNotification('文件选择成功', 'success');
+    showSelectedFile(files);
+    showNotification(`${files.length} 个文件选择成功`, 'success');
 }
 async function handleUpload(event) {
     event.preventDefault();
-    if (!selectedFile) {
-        showNotification('请选择要上传的文件', 'error');
+    if (selectedFiles.length === 0) {
+        showNotification('请选择要上传的文件或文件夹', 'error');
         return;
     }
     const password = passwordInput.value.trim();
@@ -244,59 +258,70 @@ async function handleUpload(event) {
         <div style="width: 16px; height: 16px; border: 2px solid white; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
         <span>上传中...</span>
     `;
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('password', password);
-    try {
-        updateProgress(0, '开始上传...');
-        const xhr = new XMLHttpRequest();
-        xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-                const percentage = Math.round((e.loaded / e.total) * 100);
-                updateProgress(percentage, `上传中... ${formatBytes(e.loaded)} / ${formatBytes(e.total)}`);
-            }
-        });
-        xhr.addEventListener('load', () => {
-            try {
-                const result = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && result.success) {
-                    updateProgress(100, '上传完成！');
-                    showUploadStatus(`文件 "${result.filename || selectedFile.name}" 上传成功！`, 'success');
-                    showNotification('文件上传成功！', 'success');
-                    setTimeout(() => {
-                        clearSelectedFile();
-                        passwordInput.value = '';
-                        resetProgress();
-                    }, 2000);
-                } else {
-                    throw new Error(result.error || `HTTP ${xhr.status}`);
+    let filesUploaded = 0;
+    const totalFiles = selectedFiles.length;
+    const uploadFile = async (file) => {
+        const formData = new FormData();
+        let fileName = file.webkitRelativePath || file.name;
+        if (uploadPath) {
+            fileName = `${uploadPath}${fileName}`;
+        }
+        formData.append('file', file, fileName);
+        formData.append('password', password);
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentage = Math.round((e.loaded / e.total) * 100);
+                    const overallPercentage = Math.round(((filesUploaded + (e.loaded / e.total)) / totalFiles) * 100);
+                    updateProgress(overallPercentage, `上传中 (${filesUploaded + 1}/${totalFiles}): ${fileName} - ${percentage}%`);
                 }
+            });
+            xhr.addEventListener('load', () => {
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    if (xhr.status === 200 && result.success) {
+                        filesUploaded++;
+                        resolve(result);
+                    } else {
+                        reject(new Error(result.error || `HTTP ${xhr.status}`));
+                    }
+                } catch (error) {
+                    reject(error);
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('网络错误')));
+            xhr.open('POST', UPLOAD_API_URL);
+            xhr.send(formData);
+        });
+    };
+    try {
+        updateProgress(0, `准备上传 ${totalFiles} 个文件...`);
+        for (const file of selectedFiles) {
+            try {
+                const result = await uploadFile(file);
+                showNotification(`文件 "${result.filename}" 上传成功！`, 'success');
             } catch (error) {
-                showUploadStatus(`上传失败: ${error.message}`, 'error');
-                showNotification(`上传失败: ${error.message}`, 'error');
-                resetProgress();
+                showUploadStatus(`上传文件 "${file.webkitRelativePath || file.name}" 失败: ${error.message}`, 'error');
+                showNotification(`上传文件 "${file.webkitRelativePath || file.name}" 失败`, 'error');
             }
-        });
-        xhr.addEventListener('error', () => {
-            showUploadStatus('上传过程中发生网络错误', 'error');
-            showNotification('网络错误，请检查连接后重试', 'error');
-            resetProgress();
-        });
-        xhr.open('POST', UPLOAD_API_URL);
-        xhr.send(formData);
-    } catch (error) {
-        console.error('上传请求出错:', error);
-        showUploadStatus(`上传请求出错: ${error.message}`, 'error');
-        showNotification(`上传请求出错: ${error.message}`, 'error');
-        resetProgress();
-    } finally {
+        }
+        updateProgress(100, '所有文件上传完成！');
+        showUploadStatus(`${filesUploaded} / ${totalFiles} 个文件上传成功！`, filesUploaded === totalFiles ? 'success' : 'error');
         setTimeout(() => {
-            uploadSubmitBtn.disabled = false;
-            uploadSubmitBtn.innerHTML = `
-                <i class="fas fa-upload"></i>
-                <span>开始上传</span>
-            `;
-        }, 1000);
+            clearSelectedFile();
+            passwordInput.value = '';
+            resetProgress();
+        }, 3000);
+    } catch (error) {
+        console.error('上传处理出错:', error);
+        showUploadStatus(`上传处理出错: ${error.message}`, 'error');
+    } finally {
+        uploadSubmitBtn.disabled = false;
+        uploadSubmitBtn.innerHTML = `
+            <i class="fas fa-upload"></i>
+            <span>开始上传</span>
+        `;
     }
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -343,14 +368,14 @@ document.addEventListener('DOMContentLoaded', () => {
             fileDropZone.style.backgroundColor = '';
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                handleFileSelect(files[0]);
+                handleFileSelect(files);
             }
         });
     }
     if (fileInput) {
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                handleFileSelect(e.target.files[0]);
+                handleFileSelect(e.target.files);
             }
         });
     }

@@ -87,14 +87,14 @@
                                     <i class="fas fa-cloud-upload-alt"></i>
                                 </div>
                                 <div class="drop-zone-text">
-                                    <h3>拖拽文件到此处</h3>
-                                    <p>或者 <span class="browse-text">点击选择文件</span></p>
+                                    <h3>拖拽文件或文件夹到此处</h3>
+                                    <p>或者 <span class="browse-text">点击选择文件或文件夹</span></p>
                                 </div>
                                 <div class="file-types">
                                     <span>支持: PDF, DOC, PPT, XLS, 图片, 视频等</span>
                                 </div>
                             </div>
-                            <input type="file" id="file-input" name="file" required hidden>
+                            <input type="file" id="file-input" name="file" required hidden multiple webkitdirectory>
                         </div>
 
                         <div id="selected-file-info" class="selected-file-info" style="display: none;">

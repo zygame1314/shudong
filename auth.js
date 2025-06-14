@@ -345,9 +345,17 @@ function updateUIBasedOnAuth() {
             loginButton.style.background = 'var(--success-color)';
             loginButton.style.cursor = 'not-allowed';
         }
-        if (uploadLink) {
-            uploadLink.style.display = 'inline-flex';
-            uploadLink.style.animation = 'fadeInUp 0.5s ease';
+        if (authSection) {
+            let uploadBtn = document.getElementById('upload-btn-link');
+            if (!uploadBtn) {
+                uploadBtn = document.createElement('a');
+                uploadBtn.id = 'upload-btn-link';
+                uploadBtn.className = 'primary-btn';
+                uploadBtn.innerHTML = `<i class="fas fa-upload"></i><span>上传</span>`;
+                authSection.appendChild(uploadBtn);
+            }
+            uploadBtn.href = 'upload.html';
+            uploadBtn.style.display = 'inline-flex';
         }
         if (authStatusSpan) {
             authStatusSpan.textContent = '状态：已验证';

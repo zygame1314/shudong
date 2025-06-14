@@ -637,6 +637,7 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '') {
         isShowingSearchResults = isGlobal;
         updateBreadcrumb(isGlobal ? '' : prefix, isGlobal, searchTerm.trim());
     }
+    updateUploadButtonLink();
 }
 document.addEventListener('authSuccess', () => {
     console.log("验证成功 (authSuccess event received)，开始加载根目录文件列表...");
@@ -717,6 +718,16 @@ if (searchButton && searchInput) {
             fetchAndDisplayFiles(currentPrefix, '');
         }
     });
+}
+function updateUploadButtonLink() {
+    const uploadBtn = document.getElementById('upload-btn-link');
+    if (uploadBtn) {
+        let uploadUrl = 'upload.html';
+        if (currentPrefix) {
+            uploadUrl += `?path=${encodeURIComponent(currentPrefix)}`;
+        }
+        uploadBtn.href = uploadUrl;
+    }
 }
 const style = document.createElement('style');
 style.textContent = `
