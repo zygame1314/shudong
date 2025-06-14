@@ -164,17 +164,32 @@ export async function onRequestPost({ request, env }) {
         }
         const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         const cookieJar = new CookieJar();
-        debugLogs.push("步骤0: 开始预请求 one.ccnu.edu.cn 获取前置Cookie...");
-        const preflightUrl = "https://one.ccnu.edu.cn/";
-        const preflightResponse = await fetch(preflightUrl, { headers: { 'User-Agent': userAgent } });
-        cookieJar.addFromHeaders(preflightResponse.headers.getSetCookie(), preflightUrl);
-        debugLogs.push(`前置Cookie获取完成: ${cookieJar.toHeaderStringForUrl(preflightUrl)}`);
-        const serviceUrl = "https://one.ccnu.edu.cn/auth-protocol-core/loginSuccess?sessionToken=1406f29e867c49ab9e88570ab15a266d";
-        const loginPageUrl = `https://account.ccnu.edu.cn/cas/login?service=${encodeURIComponent(serviceUrl)}`;
+        debugLogs.push("步骤-1: 访问 one.ccnu.edu.cn 获取动态登录URL...");
+        const portalHomeUrl = "https://one.ccnu.edu.cn/";
+        const portalHomeResponse = await fetch(portalHomeUrl, { headers: { 'User-Agent': userAgent } });
+        cookieJar.addFromHeaders(portalHomeResponse.headers.getSetCookie(), portalHomeUrl);
+        let dynamicLoginUrl = '';
+        const transformedStream = new HTMLRewriter()
+            .on('a[href*="/cas/login"]', {
+                element(el) {
+                    if (!dynamicLoginUrl) {
+                        dynamicLoginUrl = el.getAttribute('href');
+                    }
+                }
+            })
+            .transform(portalHomeResponse);
+        await new Response(transformedStream.body).text();
+        if (!dynamicLoginUrl) {
+            throw new Error('无法在门户首页找到动态登录URL。页面结构可能已改变。');
+        }
+        if (dynamicLoginUrl.startsWith('/')) {
+           dynamicLoginUrl = new URL(dynamicLoginUrl, portalHomeUrl).toString();
+        }
+        debugLogs.push(`动态登录URL获取成功: ${dynamicLoginUrl}`);
+        const loginPageUrl = dynamicLoginUrl;
         debugLogs.push("步骤1: 开始获取登录前提条件...");
         const { lt, execution } = await getLoginPrerequisites(loginPageUrl, cookieJar, userAgent);
         debugLogs.push(`获取成功: lt=${lt.substring(0, 10)}..., execution=${execution}`);
-        debugLogs.push(`初始Cookie(含前置): ${cookieJar.toHeaderStringForUrl(loginPageUrl)}`);
         const formData = new URLSearchParams({
             username, password, lt, execution,
             _eventId: 'submit', submit: '登录'
