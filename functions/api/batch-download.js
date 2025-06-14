@@ -47,12 +47,38 @@ export async function onRequestPost({ request, env }) {
   }
   try {
     const zip = new JSZip();
+    const DB = env.DB;
+    if (!DB) {
+      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (D1 binding).' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+    const allFileKeys = new Set();
     for (const key of keys) {
-        const object = await R2_BUCKET.get(key);
-        if (object !== null) {
-            const buffer = await object.arrayBuffer();
-            zip.file(key, buffer);
+      const isDirectory = key.endsWith('/');
+      if (isDirectory) {
+        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
+        const { results } = await stmt.bind(`${key}%`).all();
+        if (results) {
+          results.forEach(row => allFileKeys.add(row.key));
         }
+      } else {
+        allFileKeys.add(key);
+      }
+    }
+    for (const fileKey of allFileKeys) {
+      const object = await R2_BUCKET.get(fileKey);
+      if (object !== null) {
+        const buffer = await object.arrayBuffer();
+        zip.file(fileKey, buffer);
+      }
+    }
+    if (Object.keys(zip.files).length === 0) {
+        return new Response(JSON.stringify({ success: false, error: 'No valid files found to download.' }), {
+            status: 404,
+            headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+        });
     }
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const headers = addCorsHeaders({

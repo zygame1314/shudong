@@ -569,6 +569,114 @@ function updateSelectionToolbar() {
         toolbar.classList.remove('visible');
     }
 }
+async function handleBatchDelete() {
+    const keysToDelete = Array.from(selectedItems);
+    if (keysToDelete.length === 0) {
+        showNotification('没有选择任何项目', 'info');
+        return;
+    }
+    try {
+        await createAuthModal({
+            title: '确认批量删除',
+            subtitle: `你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！`,
+            placeholder: '请输入管理员密码以确认删除',
+            buttonText: '确认删除',
+            iconClass: 'fa-exclamation-triangle',
+            action: async (adminPassword) => {
+                const password = getAuthPassword();
+                if (!password) {
+                    throw new Error("无法删除：未获取到验证口令。请重新验证。");
+                }
+                const response = await fetch(`${FILES_API_URL}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${password}`,
+                    },
+                    body: JSON.stringify({
+                        keys: keysToDelete,
+                        adminPassword: adminPassword
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || '批量删除失败，请检查管理员密码或稍后重试');
+                }
+                showNotification(`成功删除了 ${result.deletedCount} 个项目`, 'success');
+                keysToDelete.forEach(key => {
+                    const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+                    if (directoryCache[parentPrefix]) {
+                        delete directoryCache[parentPrefix];
+                    }
+                });
+                if (directoryCache[currentPrefix]) {
+                    delete directoryCache[currentPrefix];
+                }
+                selectedItems.clear();
+                toggleSelectionMode();
+                fetchAndDisplayFiles(currentPrefix);
+            }
+        });
+    } catch (error) {
+        if (error.message !== '用户取消验证') {
+            showNotification(`批量删除操作失败: ${error.message}`, 'error');
+        } else {
+            showNotification('批量删除操作已取消', 'info');
+        }
+        console.log('批量删除操作处理完毕:', error.message);
+    }
+}
+async function handleBatchDownload() {
+    const keysToDownload = Array.from(selectedItems);
+    if (keysToDownload.length === 0) {
+        showNotification('没有选择任何项目', 'info');
+        return;
+    }
+    const password = getAuthPassword();
+    if (!password) {
+        showNotification("无法下载：未获取到验证口令。请重新验证。", 'error');
+        return;
+    }
+    const downloadBtn = document.getElementById('batch-download-btn');
+    downloadBtn.disabled = true;
+    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 打包中...';
+    showNotification(`正在准备下载 ${keysToDownload.length} 个项目...`, 'info');
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/batch-download`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({ keys: keysToDownload }),
+        });
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+            a.download = `shudong_batch_${timestamp}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showNotification('文件包下载完成', 'success');
+            toggleSelectionMode();
+        } else {
+            const errorResult = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+            console.error(`批量下载失败:`, errorResult);
+            showNotification(`批量下载失败: ${errorResult.error || response.statusText}`, 'error');
+        }
+    } catch (error) {
+        console.error(`批量下载请求出错:`, error);
+        showNotification(`批量下载错误: ${error.message}`, 'error');
+    } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = '<i class="fas fa-download"></i> 批量下载';
+    }
+}
 function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '') {
     fileListElement.innerHTML = '';
     const lowerLocalSearchTerm = localSearchTerm.trim().toLowerCase();

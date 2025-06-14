@@ -170,35 +170,45 @@ export async function onRequestDelete({ request, env }) {
   try {
     const itemsToDelete = keys || [key];
     if (itemsToDelete.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: 'No items to delete.' }), {
+      return new Response(JSON.stringify({ success: true, deletedCount: 0, message: 'No items to delete.' }), {
         status: 200,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
-    const r2KeysToDelete = [];
-    const dbKeysToDelete = [];
+    const r2KeysToDelete = new Set();
+    const dbKeysToDelete = new Set();
     for (const itemKey of itemsToDelete) {
       const isDirectory = itemKey.endsWith('/');
       if (isDirectory) {
-        const list = await R2_BUCKET.list({ prefix: itemKey });
-        list.objects.forEach(obj => r2KeysToDelete.push(obj.key));
-        const stmt = DB.prepare('DELETE FROM files WHERE key LIKE ?');
-        await stmt.bind(`${itemKey}%`).run();
+        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
+        const { results } = await stmt.bind(`${itemKey}%`).all();
+        if (results) {
+          results.forEach(row => {
+            r2KeysToDelete.add(row.key);
+            dbKeysToDelete.add(row.key);
+          });
+        }
       } else {
-        r2KeysToDelete.push(itemKey);
-        dbKeysToDelete.push(itemKey);
+        r2KeysToDelete.add(itemKey);
+        dbKeysToDelete.add(itemKey);
       }
     }
-    if (r2KeysToDelete.length > 0) {
-      await R2_BUCKET.delete(r2KeysToDelete);
-      console.log(`Successfully deleted ${r2KeysToDelete.length} keys from R2.`);
+    const finalR2Keys = Array.from(r2KeysToDelete);
+    const finalDbKeys = Array.from(dbKeysToDelete);
+    if (finalR2Keys.length > 0) {
+      await R2_BUCKET.delete(finalR2Keys);
+      console.log(`Successfully requested deletion of ${finalR2Keys.length} keys from R2.`);
     }
-    if (dbKeysToDelete.length > 0) {
-      const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${dbKeysToDelete.map(() => '?').join(',')})`);
-      await stmt.bind(...dbKeysToDelete).run();
-      console.log(`Successfully deleted ${dbKeysToDelete.length} keys from D1.`);
+    if (finalDbKeys.length > 0) {
+      const batchSize = 100;
+      for (let i = 0; i < finalDbKeys.length; i += batchSize) {
+        const batch = finalDbKeys.slice(i, i + batchSize);
+        const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${batch.map(() => '?').join(',')})`);
+        await stmt.bind(...batch).run();
+      }
+      console.log(`Successfully deleted ${finalDbKeys.length} keys from D1.`);
     }
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, deletedCount: finalDbKeys.length }), {
       status: 200,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
