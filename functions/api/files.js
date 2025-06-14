@@ -1,5 +1,3 @@
-import { jwtVerify } from 'jose';
-
 const addCorsHeaders = (headers = {}) => {
   const allowedOrigin = '*';
   return {
@@ -11,31 +9,29 @@ const addCorsHeaders = (headers = {}) => {
   };
 };
 
-async function verifyAuth(request, env) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return { authorized: false, error: '缺少认证信息' };
-    }
-    const token = authHeader.substring(7);
-    try {
-        const secret = new TextEncoder().encode(env.JWT_SECRET);
-        const { payload } = await jwtVerify(token, secret);
-        return { authorized: true, user: payload };
-    } catch (e) {
-        return { authorized: false, error: '认证令牌无效或已过期' };
-    }
+function verifyPassword(request, env) {
+  const correctPassword = env.AUTH_PASSWORD;
+  if (!correctPassword) {
+    console.error("Server config error: AUTH_PASSWORD not set.");
+    return false;
+  }
+
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+
+  const providedPassword = authHeader.substring(7);
+  return providedPassword === correctPassword;
 }
 
 export async function onRequestGet({ request, env }) {
-  const authResult = await verifyAuth(request, env);
-  if (!authResult.authorized) {
-      return new Response(JSON.stringify({ success: false, error: authResult.error }), {
-          status: 401,
-          headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-      });
+  if (!verifyPassword(request, env)) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
   }
-
-  console.log(`用户 ${authResult.user.name} (${authResult.user.account}) 正在请求文件列表...`);
 
   const R2_BUCKET = env.R2_bucket;
   if (!R2_BUCKET) {
