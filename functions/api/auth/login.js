@@ -1,4 +1,4 @@
-import { SignJWT } from 'jose';
+import { SignJWT } from 'https://esm.sh/jose@5.6.3';
 import { HTMLRewriter } from 'htmlrewriter';
 class CookieJar {
     constructor() {

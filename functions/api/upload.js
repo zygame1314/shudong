@@ -1,4 +1,4 @@
-import { jwtVerify } from 'jose';
+import { jwtVerify } from 'https://esm.sh/jose@5.6.3';
 
 const addCorsHeaders = (headers = {}) => {
   const allowedOrigin = '*';
