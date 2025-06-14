@@ -70,7 +70,7 @@ export async function onRequest(context) {
     const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const signatureData = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(tokenPayload));
     const signature = btoa(String.fromCharCode(...new Uint8Array(signatureData))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    const previewUrl = `${new URL(request.url).origin}/api/download/${encodeURIComponent(key)}?token=${signature}&expires=${expires}`;
+    const previewUrl = `${new URL(request.url).origin}/api/download/${expires}/${signature}/${key}`;
     return new Response(JSON.stringify({ success: true, url: previewUrl }), {
       status: 200,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),

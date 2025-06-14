@@ -127,7 +127,7 @@ async function downloadFile(fileKey) {
         showNotification("无法下载：未获取到验证口令。请重新验证。", 'error');
         return;
     }
-    const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${encodeURIComponent(fileKey)}`;
+    const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${fileKey}`;
     const statusElementId = `status-${fileKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
     const statusElement = document.getElementById(statusElementId);
     const downloadBtn = document.querySelector(`[onclick*="${fileKey}"]`);
@@ -252,7 +252,7 @@ async function deleteFile(key, isDirectory) {
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || '无法获取Office文件预览链接');
                 }
-                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(data.url)}`;
+                previewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${data.url}`;
             } else {
                 showNotification('该文件类型不支持预览。', 'info');
                 return;
