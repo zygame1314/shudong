@@ -433,3 +433,4 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 window.checkAuth = checkAuth;
 window.logout = logout;
+window.isUserAuthenticated = isUserAuthenticated;

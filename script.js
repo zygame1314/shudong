@@ -1032,6 +1032,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
+
+    if (fileListElement) {
+        fileListElement.addEventListener('click', (event) => {
+            const targetLi = event.target.closest('li.empty-state');
+            if (targetLi && targetLi.textContent.includes('请先完成验证以查看文件')) {
+                if (typeof window.isUserAuthenticated === 'function' && !window.isUserAuthenticated()) {
+                    if (typeof window.checkAuth === 'function') {
+                        window.checkAuth();
+                    }
+                }
+            }
+        });
+    }
     const selectionModeBtn = document.getElementById('selection-mode-btn');
     if (selectionModeBtn) {
         selectionModeBtn.addEventListener('click', toggleSelectionMode);
