@@ -284,97 +284,97 @@ async function deleteFile(key, isDirectory) {
             showNotification('删除操作已取消', 'info');
         }
         console.log('删除操作处理完毕:', error.message);
-        }
     }
-    async function previewFile(fileKey, fileName, fileSize) {
-        if (fileSize > 2 * 1024 * 1024) {
-            showNotification('文件超过2MB，不支持预览。', 'info');
-            return;
-        }
-        const extension = fileName.split('.').pop().toLowerCase();
-        const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
-        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
-        const password = getAuthPassword();
-        if (!password) {
-            showNotification("无法预览：未获取到验证口令。", 'error');
-            return;
-        }
-        const previewLoader = previewModal.querySelector('.preview-loader');
-        previewTitle.textContent = `预览: ${fileName}`;
-        previewModal.classList.add('visible');
-        previewLoader.style.display = 'flex';
-        previewIframe.style.display = 'none';
-        const existingImage = previewModal.querySelector('.preview-image');
-        if (existingImage) {
-            existingImage.remove();
-        }
-        try {
-            let isImagePreview = imageExtensions.includes(extension);
-            if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
-                const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
-                    headers: { 'Authorization': `Bearer ${password}` }
-                });
-                const data = await response.json();
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || '无法获取文件预览链接');
-                }
-                const previewUrl = data.url;
-                const hideLoader = () => {
-                    previewLoader.style.display = 'none';
-                };
-                if (isImagePreview) {
-                    const img = document.createElement('img');
-                    img.src = previewUrl;
-                    img.className = 'preview-image';
-                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
-                    img.onload = () => {
-                        hideLoader();
-                        img.style.display = 'block';
-                    };
-                    img.onerror = () => {
-                        hideLoader();
-                        showNotification('图片加载失败', 'error');
-                    };
-                    previewIframe.parentElement.appendChild(img);
-                } else {
-                    previewIframe.onload = hideLoader;
-                    previewIframe.onerror = () => {
-                        hideLoader();
-                        showNotification('预览加载失败', 'error');
-                    };
-                    if (officeExtensions.includes(extension)) {
-                        const xdocinBaseUrl = "https://view.xdocin.com/view";
-                        const params = new URLSearchParams({
-                            src: previewUrl,
-                            title: fileName,
-                            printable: 'false',
-                            copyable: 'false',
-                            watermark: '生科树洞'
-                        });
-                        previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
-                    } else {
-                        previewIframe.src = previewUrl;
-                    }
-                    previewIframe.style.display = 'block';
-                }
-            } else {
-                showNotification('该文件类型不支持预览。', 'info');
-                previewModal.classList.remove('visible');
-                return;
+}
+async function previewFile(fileKey, fileName, fileSize) {
+    if (fileSize > 2 * 1024 * 1024) {
+        showNotification('文件超过2MB，不支持预览。', 'info');
+        return;
+    }
+    const extension = fileName.split('.').pop().toLowerCase();
+    const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+    const password = getAuthPassword();
+    if (!password) {
+        showNotification("无法预览：未获取到验证口令。", 'error');
+        return;
+    }
+    const previewLoader = previewModal.querySelector('.preview-loader');
+    previewTitle.textContent = `预览: ${fileName}`;
+    previewModal.classList.add('visible');
+    previewLoader.style.display = 'flex';
+    previewIframe.style.display = 'none';
+    const existingImage = previewModal.querySelector('.preview-image');
+    if (existingImage) {
+        existingImage.remove();
+    }
+    try {
+        let isImagePreview = imageExtensions.includes(extension);
+        if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
+            const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
+                headers: { 'Authorization': `Bearer ${password}` }
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '无法获取文件预览链接');
             }
-        } catch (error) {
-            console.error("预览文件时出错:", error);
-            showNotification(`预览失败: ${error.message}`, 'error');
-            previewLoader.style.display = 'none';
+            const previewUrl = data.url;
+            const hideLoader = () => {
+                previewLoader.style.display = 'none';
+            };
+            if (isImagePreview) {
+                const img = document.createElement('img');
+                img.src = previewUrl;
+                img.className = 'preview-image';
+                img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
+                img.onload = () => {
+                    hideLoader();
+                    img.style.display = 'block';
+                };
+                img.onerror = () => {
+                    hideLoader();
+                    showNotification('图片加载失败', 'error');
+                };
+                previewIframe.parentElement.appendChild(img);
+            } else {
+                previewIframe.onload = hideLoader;
+                previewIframe.onerror = () => {
+                    hideLoader();
+                    showNotification('预览加载失败', 'error');
+                };
+                if (officeExtensions.includes(extension)) {
+                    const xdocinBaseUrl = "https://view.xdocin.com/view";
+                    const params = new URLSearchParams({
+                        src: previewUrl,
+                        title: fileName,
+                        printable: 'false',
+                        copyable: 'false',
+                        watermark: '生科树洞'
+                    });
+                    previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
+                } else {
+                    previewIframe.src = previewUrl;
+                }
+                previewIframe.style.display = 'block';
+            }
+        } else {
+            showNotification('该文件类型不支持预览。', 'info');
             previewModal.classList.remove('visible');
+            return;
         }
+    } catch (error) {
+        console.error("预览文件时出错:", error);
+        showNotification(`预览失败: ${error.message}`, 'error');
+        previewLoader.style.display = 'none';
+        previewModal.classList.remove('visible');
     }
-    function showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
+}
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
     notification.style.cssText = `
         position: fixed;
-        top: 20px;
+        top: 80px;
         right: 20px;
         padding: 1rem 1.5rem;
         background: ${type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#3498DB'};
@@ -555,7 +555,7 @@ function toggleSelectionMode() {
             const selectAllSpan = selectAllBtn.querySelector('span');
             if (selectAllSpan) selectAllSpan.textContent = '全选';
         }
-        
+
         selectedItems.clear();
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
         document.querySelectorAll('.file-list-item.selected').forEach(item => item.classList.remove('selected'));
@@ -672,7 +672,7 @@ async function handleBatchDelete() {
                 if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
                 selectedItems.clear();
                 fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
-                    if(isSelectionMode) toggleSelectionMode();
+                    if (isSelectionMode) toggleSelectionMode();
                 });
             }
         });
@@ -774,7 +774,7 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
     if (!isGlobalSearch && data.directories && data.directories.length > 0) {
         let filteredDirectories = data.directories;
         if (lowerLocalSearchTerm) {
-            filteredDirectories = filteredDirectories.filter(dir => 
+            filteredDirectories = filteredDirectories.filter(dir =>
                 dir.name.toLowerCase().includes(lowerLocalSearchTerm)
             );
         }
@@ -790,7 +790,7 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
     if (data.files && data.files.length > 0) {
         let filteredFiles = data.files;
         if (!isGlobalSearch && lowerLocalSearchTerm) {
-            filteredFiles = filteredFiles.filter(file => 
+            filteredFiles = filteredFiles.filter(file =>
                 file.name.toLowerCase().includes(lowerLocalSearchTerm)
             );
         }
@@ -1112,7 +1112,7 @@ if (searchButton && searchInput) {
         if (searchTerm === '' && isShowingSearchResults) {
             fetchAndDisplayFiles(currentPrefix, '', 1);
         } else if (searchTerm === '' && !isShowingSearchResults) {
-             fetchAndDisplayFiles(currentPrefix, '', currentPage);
+            fetchAndDisplayFiles(currentPrefix, '', currentPage);
         }
     });
 }
