@@ -58,7 +58,7 @@ export async function onRequestPost({ request, env }) {
     for (const key of keys) {
       const isDirectory = key.endsWith('/');
       if (isDirectory) {
-        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
+        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ? AND is_directory = FALSE');
         const { results } = await stmt.bind(`${key}%`).all();
         if (results) {
           results.forEach(row => allFileKeys.add(row.key));

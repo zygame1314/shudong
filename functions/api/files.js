@@ -21,9 +21,7 @@ function verifyPassword(request, env) {
   const providedPassword = authHeader.substring(7);
   return providedPassword === correctPassword;
 }
-
 const DEFAULT_PAGE_SIZE = 20;
-
 export async function onRequestGet({ request, env }) {
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
@@ -39,10 +37,8 @@ export async function onRequestGet({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
-
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
-
   if (action === 'stats') {
     try {
       const stmt = DB.prepare('SELECT COUNT(*) as fileCount, SUM(size) as totalSize FROM files');
@@ -65,25 +61,20 @@ export async function onRequestGet({ request, env }) {
       });
     }
   }
-
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
   const page = parseInt(url.searchParams.get('page')) || 1;
   const limit = parseInt(url.searchParams.get('limit')) || DEFAULT_PAGE_SIZE;
   const offset = (page - 1) * limit;
-
   try {
     if (searchTerm) {
       console.log(`Performing global search for: "${searchTerm}", page: ${page}, limit: ${limit}`);
       const searchCondition = `%${searchTerm}%`;
-      
       const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
       const { total: totalItems } = await countStmt.bind(searchCondition).first();
       const totalPages = Math.ceil(totalItems / limit);
-
       const searchStmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?');
       const { results: filesResults } = await searchStmt.bind(searchCondition, limit, offset).all();
-      
       return new Response(JSON.stringify({
         success: true,
         files: filesResults.map(f => ({ ...f, isSearchResult: true })),
@@ -97,55 +88,47 @@ export async function onRequestGet({ request, env }) {
         status: 200,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
-
     } else {
       console.log(`Listing files for prefix: "${prefix}", page: ${page}, limit: ${limit}`);
-      
-      const allItemsStmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE key LIKE ? ORDER BY key ASC');
-      const { results: allDbItems } = await allItemsStmt.bind(`${prefix}%`).all();
-
+      const filesStmt = DB.prepare(
+        'SELECT key, name, size, uploaded, contentType, is_directory FROM files WHERE parent_path = ? AND is_directory = FALSE ORDER BY name ASC'
+      );
+      const { results: filesFromDb } = await filesStmt.bind(prefix).all();
+      const fileList = filesFromDb.map(f => ({
+        key: f.key,
+        name: f.name,
+        size: f.size,
+        uploaded: f.uploaded,
+        contentType: f.contentType,
+        isDirectory: f.is_directory
+      }));
+      const dirDeduceStmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
+      const { results: allKeysForDirDeduction } = await dirDeduceStmt.bind(`${prefix}%`).all();
       const directoryMap = new Map();
-      const fileList = [];
       const prefixLength = prefix.length;
-
-      allDbItems.forEach(row => {
+      allKeysForDirDeduction.forEach(row => {
         const pathAfterPrefix = row.key.substring(prefixLength);
         if (!pathAfterPrefix) return;
-
         const firstSlashIndex = pathAfterPrefix.indexOf('/');
-
         if (firstSlashIndex !== -1) {
-          const entryName = pathAfterPrefix.substring(0, firstSlashIndex);
-          if (!directoryMap.has(entryName)) {
-            directoryMap.set(entryName, {
-              key: `${prefix}${entryName}/`,
-              name: entryName,
+          const dirName = pathAfterPrefix.substring(0, firstSlashIndex);
+          if (!directoryMap.has(dirName)) {
+            directoryMap.set(dirName, {
+              key: `${prefix}${dirName}/`,
+              name: dirName,
               isDirectory: true
             });
           }
-        } else {
-          fileList.push({
-            key: row.key,
-            name: pathAfterPrefix,
-            size: row.size,
-            uploaded: row.uploaded,
-            isDirectory: false
-          });
         }
       });
-
       const sortedDirectories = Array.from(directoryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       const sortedFiles = fileList.sort((a, b) => a.name.localeCompare(b.name));
-      
       const combinedItems = [...sortedDirectories, ...sortedFiles];
-      
       const totalItems = combinedItems.length;
       const totalPages = Math.ceil(totalItems / limit);
       const paginatedCombinedItems = combinedItems.slice(offset, offset + limit);
-
       const responseDirectories = paginatedCombinedItems.filter(item => item.isDirectory);
       const responseFiles = paginatedCombinedItems.filter(item => !item.isDirectory);
-
       return new Response(JSON.stringify({
         success: true,
         prefix: prefix,

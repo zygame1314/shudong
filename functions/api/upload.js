@@ -80,10 +80,12 @@ export async function onRequestPost({ request, env }) {
       console.log(`Successfully uploaded ${filename} to R2.`);
       try {
         const stmt = DB.prepare(
-          'INSERT INTO files (key, name, size, uploaded, contentType) VALUES (?, ?, ?, ?, ?)'
+          'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
-        const name = filename.split('/').pop();
-        await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type).run();
+        const parts = filename.split('/');
+        const name = parts.pop();
+        const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
+        await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false).run();
         console.log(`Successfully inserted metadata for ${filename} into D1.`);
       } catch (dbError) {
         console.error(`Error inserting metadata for ${filename} into D1:`, dbError);
