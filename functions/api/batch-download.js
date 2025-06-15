@@ -45,37 +45,62 @@ export async function onRequestPost({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
-  try {
-    const zip = new JSZip();
-    const DB = env.DB;
-    if (!DB) {
-      return new Response(JSON.stringify({ success: false, error: 'Server configuration error (D1 binding).' }), {
-        status: 500,
-        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-      });
-    }
-    const allFileKeys = new Set();
-    for (const key of keys) {
+  const DB = env.DB;
+  if (!DB) {
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (D1 binding).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const MAX_TOTAL_SIZE_BYTES = 10 * 1024 * 1024;
+  let currentTotalSize = 0;
+  const allFileKeysToProcess = new Set();
+  for (const key of keys) {
       const isDirectory = key.endsWith('/');
       if (isDirectory) {
-        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ? AND is_directory = FALSE');
-        const { results } = await stmt.bind(`${key}%`).all();
-        if (results) {
-          results.forEach(row => allFileKeys.add(row.key));
-        }
+          const filesInDirStmt = DB.prepare('SELECT key, size FROM files WHERE key LIKE ? AND is_directory = FALSE');
+          const { results: filesInDir } = await filesInDirStmt.bind(`${key}%`).all();
+          if (filesInDir) {
+              for (const file of filesInDir) {
+                  currentTotalSize += (file.size || 0);
+                  allFileKeysToProcess.add(file.key);
+              }
+          }
       } else {
-        allFileKeys.add(key);
+          const fileStmt = DB.prepare('SELECT size FROM files WHERE key = ? AND is_directory = FALSE');
+          const fileMeta = await fileStmt.bind(key).first();
+          currentTotalSize += (fileMeta?.size || 0);
+          allFileKeysToProcess.add(key);
       }
-    }
-    for (const fileKey of allFileKeys) {
+      if (currentTotalSize > MAX_TOTAL_SIZE_BYTES) {
+          return new Response(JSON.stringify({ 
+              success: false, 
+              error: `批量下载的总文件大小超过限制 (${MAX_TOTAL_SIZE_BYTES / (1024 * 1024)}MB)。请减少选择的项目或分批下载。` 
+          }), {
+              status: 413,
+              headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+          });
+      }
+  }
+  if (allFileKeysToProcess.size === 0 && keys.length > 0) { 
+       return new Response(JSON.stringify({ success: false, error: '选择的项目中没有可下载的文件。' }), {
+          status: 404, 
+          headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+  }
+  try {
+    const zip = new JSZip();
+    for (const fileKey of allFileKeysToProcess) {
       const object = await R2_BUCKET.get(fileKey);
       if (object !== null) {
         const buffer = await object.arrayBuffer();
-        zip.file(fileKey, buffer);
+        zip.file(fileKey, buffer); 
+      } else {
+        console.warn(`File not found in R2: ${fileKey}`);
       }
     }
     if (Object.keys(zip.files).length === 0) {
-        return new Response(JSON.stringify({ success: false, error: 'No valid files found to download.' }), {
+        return new Response(JSON.stringify({ success: false, error: '没有有效的文件可供下载。' }), {
             status: 404,
             headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
         });
@@ -83,12 +108,12 @@ export async function onRequestPost({ request, env }) {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const headers = addCorsHeaders({
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="shudong_download.zip"`,
+        'Content-Disposition': `attachment; filename="shudong_download_${Date.now()}.zip"`,
     });
     return new Response(zipBlob, { headers });
   } catch (error) {
     console.error('Error creating zip file:', error);
-    return new Response(JSON.stringify({ success: false, error: 'Failed to create zip file.' }), {
+    return new Response(JSON.stringify({ success: false, error: '创建 ZIP 文件失败。请稍后重试或联系管理员。' }), {
       status: 500,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
