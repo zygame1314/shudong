@@ -102,26 +102,15 @@ export async function onRequestGet({ request, env }) {
         contentType: f.contentType,
         isDirectory: f.is_directory
       }));
-      const dirDeduceStmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
-      const { results: allKeysForDirDeduction } = await dirDeduceStmt.bind(`${prefix}%`).all();
-      const directoryMap = new Map();
-      const prefixLength = prefix.length;
-      allKeysForDirDeduction.forEach(row => {
-        const pathAfterPrefix = row.key.substring(prefixLength);
-        if (!pathAfterPrefix) return;
-        const firstSlashIndex = pathAfterPrefix.indexOf('/');
-        if (firstSlashIndex !== -1) {
-          const dirName = pathAfterPrefix.substring(0, firstSlashIndex);
-          if (!directoryMap.has(dirName)) {
-            directoryMap.set(dirName, {
-              key: `${prefix}${dirName}/`,
-              name: dirName,
-              isDirectory: true
-            });
-          }
-        }
-      });
-      const sortedDirectories = Array.from(directoryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const dirsStmt = DB.prepare(
+        'SELECT key, name, size, uploaded, contentType, is_directory FROM files WHERE parent_path = ? AND is_directory = TRUE ORDER BY name ASC'
+      );
+      const { results: dirsFromDb } = await dirsStmt.bind(prefix).all();
+      const sortedDirectories = dirsFromDb.map(d => ({
+        key: d.key,
+        name: d.name,
+        isDirectory: d.is_directory
+      }));
       const sortedFiles = fileList.sort((a, b) => a.name.localeCompare(b.name));
       const combinedItems = [...sortedDirectories, ...sortedFiles];
       const totalItems = combinedItems.length;

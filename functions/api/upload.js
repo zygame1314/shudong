@@ -16,6 +16,36 @@ function verifyPasswordFromFormData(password, env) {
   }
   return password === correctPassword;
 }
+async function ensureDirectoryExists(db, fullPath, env) {
+  const pathSegments = fullPath.split('/').filter(segment => segment.length > 0);
+  let currentPath = '';
+  for (let i = 0; i < pathSegments.length -1; i++) {
+    const segment = pathSegments[i];
+    const parentPathForCurrentDir = currentPath;
+    currentPath += segment + '/';
+    try {
+      const checkStmt = db.prepare('SELECT key FROM files WHERE key = ? AND is_directory = TRUE');
+      const existingDir = await checkStmt.bind(currentPath).first();
+      if (!existingDir) {
+        const insertDirStmt = db.prepare(
+          'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        await insertDirStmt.bind(
+          currentPath,
+          segment,
+          0,
+          new Date().toISOString(),
+          'inode/directory',
+          parentPathForCurrentDir,
+          true
+        ).run();
+        console.log(`Created directory entry in D1: ${currentPath}`);
+      }
+    } catch (error) {
+      console.error(`Error ensuring directory ${currentPath} exists in D1:`, error);
+    }
+  }
+}
 export async function onRequestPost({ request, env }) {
   try {
     const R2_BUCKET = env.R2_bucket;
@@ -78,6 +108,7 @@ export async function onRequestPost({ request, env }) {
         console.warn(`R2 put for ${filename} returned:`, uploadedObject);
       }
       console.log(`Successfully uploaded ${filename} to R2.`);
+      await ensureDirectoryExists(DB, filename, env);
       try {
         const stmt = DB.prepare(
           'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -86,9 +117,9 @@ export async function onRequestPost({ request, env }) {
         const name = parts.pop();
         const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
         await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false).run();
-        console.log(`Successfully inserted metadata for ${filename} into D1.`);
+        console.log(`Successfully inserted file metadata for ${filename} into D1.`);
       } catch (dbError) {
-        console.error(`Error inserting metadata for ${filename} into D1:`, dbError);
+        console.error(`Error inserting file metadata for ${filename} into D1:`, dbError);
       }
       return new Response(JSON.stringify({ success: true, filename: filename }), {
         status: 200,
