@@ -61,34 +61,19 @@ export async function onRequestPost({ request, env }) {
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   }
-  const MAX_TOTAL_SIZE_BYTES = 10 * 1024 * 1024;
-  let currentTotalSize = 0;
   const allFileKeysToProcess = new Set();
   for (const key of keys) {
       const isDirectory = key.endsWith('/');
       if (isDirectory) {
-          const filesInDirStmt = DB.prepare('SELECT key, size FROM files WHERE key LIKE ? AND is_directory = FALSE');
+          const filesInDirStmt = DB.prepare('SELECT key FROM files WHERE key LIKE ? AND is_directory = FALSE');
           const { results: filesInDir } = await filesInDirStmt.bind(`${key}%`).all();
           if (filesInDir) {
               for (const file of filesInDir) {
-                  currentTotalSize += (file.size || 0);
                   allFileKeysToProcess.add(file.key);
               }
           }
       } else {
-          const fileStmt = DB.prepare('SELECT size FROM files WHERE key = ? AND is_directory = FALSE');
-          const fileMeta = await fileStmt.bind(key).first();
-          currentTotalSize += (fileMeta?.size || 0);
           allFileKeysToProcess.add(key);
-      }
-      if (currentTotalSize > MAX_TOTAL_SIZE_BYTES) {
-          return new Response(JSON.stringify({ 
-              success: false, 
-              error: `批量下载的总文件大小超过限制 (${MAX_TOTAL_SIZE_BYTES / (1024 * 1024)}MB)。请减少选择的项目或分批下载。` 
-          }), {
-              status: 413,
-              headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-          });
       }
   }
   if (allFileKeysToProcess.size === 0 && keys.length > 0) { 
