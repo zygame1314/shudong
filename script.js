@@ -321,7 +321,7 @@ async function deleteFile(key, isDirectory) {
 }
 async function previewFile(fileKey, fileName, fileSize) {
     const extension = fileName.split('.').pop().toLowerCase();
-    const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+    const officeExtensions = ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
     const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
     const isVideo = videoExtensions.includes(extension);
@@ -354,8 +354,14 @@ async function previewFile(fileKey, fileName, fileSize) {
     try {
         const isImagePreview = imageExtensions.includes(extension);
         const isVideoPreview = videoExtensions.includes(extension);
-        if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview || isVideoPreview) {
-            const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
+        if (officeExtensions.includes(extension) || isImagePreview || isVideoPreview) {
+            const isOfficePreview = officeExtensions.includes(extension);
+            const apiUrl = new URL(`${API_BASE_URL}/api/preview`);
+            apiUrl.searchParams.append('key', fileKey);
+            if (isOfficePreview) {
+                apiUrl.searchParams.append('office', 'true');
+            }
+            const response = await fetch(apiUrl.toString(), {
                 headers: { 'Authorization': `Bearer ${password}` }
             });
             const data = await response.json();
@@ -408,13 +414,9 @@ async function previewFile(fileKey, fileName, fileSize) {
                     showNotification('预览加载失败', 'error');
                 };
                 if (officeExtensions.includes(extension)) {
-                    const xdocinBaseUrl = "https://view.xdocin.com/view";
+                    const xdocinBaseUrl = "https://view.officeapps.live.com/op/view.aspx";
                     const params = new URLSearchParams({
-                        src: previewUrl,
-                        title: fileName,
-                        printable: 'false',
-                        copyable: 'false',
-                        watermark: '生科树洞'
+                        src: previewUrl
                     });
                     previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
                 } else {
