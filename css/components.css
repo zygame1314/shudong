@@ -393,3 +393,31 @@
         transform: scale(1.1);
     }
 }
+.size-progress-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 350px;
+    cursor: help;
+}
+
+.progress-bar {
+    flex-grow: 1;
+    height: 10px;
+    background-color: var(--border-color);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.progress-bar-inner {
+    height: 100%;
+    background: var(--primary-gradient);
+    border-radius: 5px;
+    transition: width 0.5s ease-in-out;
+}
+
+.progress-text {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}

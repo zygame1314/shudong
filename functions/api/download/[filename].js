@@ -1,14 +1,11 @@
-const addCorsHeaders = (headers = {}) => {
-  const allowedOrigin = '*';
-  const plainHeaders = headers instanceof Headers ? Object.fromEntries(headers.entries()) : headers;
-  return {
-    ...plainHeaders,
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Max-Age': '86400',
-    'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length',
-  };
+const addCorsHeaders = (headers) => {
+  const newHeaders = new Headers(headers);
+  newHeaders.set('Access-Control-Allow-Origin', '*');
+  newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  newHeaders.set('Access-Control-Max-Age', '86400');
+  newHeaders.set('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
+  return newHeaders;
 };
 async function verifyToken(key, token, expires, secret) {
   if (!token || !expires) return false;

@@ -196,7 +196,7 @@ function showNotification(message, type = 'info') {
         z-index: 10000;
         transform: translateX(100%);
         transition: transform 0.3s ease;
-        max-width: 300px;
+        max-width: 500px;
         font-weight: 500;
     `;
     const icon = type === 'success' ? 'fas fa-check-circle' : type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-info-circle';

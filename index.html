@@ -79,11 +79,12 @@
                             <span class="stat-divider"
                                 style="margin: 0 0.5em; color: var(--text-color-secondary); display: none;">|</span>
                             <span id="total-size"></span>
-                            <span class="size-warning" title="管理员提醒：请尽量控制总大小在10G以内，超出可能产生额外费用"
-                                style="margin-left: 0.5em; color: var(--warning-color, #f39c12); font-size: 0.85em; cursor: help;">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <span style="font-size: 0.8em;">10G限制</span>
-                            </span>
+                            <div class="size-progress-container" title="存储空间使用情况 (总上限10GB)">
+                                <div class="progress-bar">
+                                    <div id="size-progress-bar" class="progress-bar-inner"></div>
+                                </div>
+                                <span id="size-progress-text" class="progress-text"></span>
+                            </div>
                         </div>
                     </div>
                     <div class="header-actions">

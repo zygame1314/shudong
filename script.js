@@ -167,7 +167,8 @@ async function fetchFileStats() {
         });
         const result = await response.json();
         if (response.ok && result.success) {
-            const { fileCount, totalSize } = result.stats;
+            const { fileCount } = result.stats;
+            let { totalSize } = result.stats;
             if (fileCountElement) {
                 fileCountElement.textContent = `${fileCount} 个文件`;
             }
@@ -175,6 +176,23 @@ async function fetchFileStats() {
                 totalSizeElement.textContent = formatBytes(totalSize);
                 const divider = document.querySelector('.stat-divider');
                 if (divider) divider.style.display = 'inline';
+            }
+            const progressBar = document.getElementById('size-progress-bar');
+            const progressText = document.getElementById('size-progress-text');
+            const maxSize = 10 * 1024 * 1024 * 1024;
+            const percentage = Math.min((totalSize / maxSize) * 100, 100);
+            if (progressBar) {
+                progressBar.style.width = `${percentage}%`;
+                if (percentage > 90) {
+                    progressBar.style.background = 'var(--accent-gradient)';
+                } else if (percentage > 70) {
+                    progressBar.style.background = 'var(--warning-gradient)';
+                } else {
+                    progressBar.style.background = 'var(--primary-gradient)';
+                }
+            }
+            if (progressText) {
+                progressText.textContent = `${formatBytes(totalSize)} / 10 GB`;
             }
         } else {
             if (fileCountElement) fileCountElement.textContent = '统计失败';
@@ -192,13 +210,10 @@ async function downloadFile(fileKey) {
         return;
     }
     const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${encodeURIComponent(fileKey)}`;
-    const statusElementId = `status-${fileKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const statusElement = document.getElementById(statusElementId);
     const downloadBtn = document.querySelector(`[onclick*="${fileKey}"]`);
-    if (statusElement) statusElement.textContent = '下载中...';
     if (downloadBtn) {
         downloadBtn.disabled = true;
-        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 下载中';
+        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 连接中...';
     }
     try {
         const response = await fetch(downloadUrl, {
@@ -208,7 +223,32 @@ async function downloadFile(fileKey) {
             },
         });
         if (response.ok) {
-            const blob = await response.blob();
+            if (!response.body) {
+                throw new Error('ReadableStream not supported in this browser.');
+            }
+            const contentLength = response.headers.get('Content-Length');
+            const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+            let loaded = 0;
+            const chunks = [];
+            const reader = response.body.getReader();
+            while (true) {
+                const {
+                    done,
+                    value
+                } = await reader.read();
+                if (done) {
+                    break;
+                }
+                chunks.push(value);
+                loaded += value.length;
+                if (totalSize && downloadBtn) {
+                    const percent = Math.floor((loaded / totalSize) * 100);
+                    downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 ${percent}%`;
+                } else if (downloadBtn) {
+                    downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 已下载 ${formatBytes(loaded)}`;
+                }
+            }
+            const blob = new Blob(chunks);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -218,27 +258,22 @@ async function downloadFile(fileKey) {
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
-            if (statusElement) statusElement.textContent = '下载完成';
             showNotification('文件下载完成', 'success');
         } else {
-            const errorResult = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+            const errorResult = await response.json().catch(() => ({
+                error: `HTTP error ${response.status}`
+            }));
             console.error(`下载 ${fileKey} 失败:`, errorResult);
             showNotification(`下载失败: ${errorResult.error || response.statusText}`, 'error');
-            if (statusElement) statusElement.textContent = `下载失败`;
         }
     } catch (error) {
         console.error(`下载 ${fileKey} 请求出错:`, error);
         showNotification(`下载错误: ${error.message}`, 'error');
-        if (statusElement) statusElement.textContent = `下载错误`;
     } finally {
         if (downloadBtn) {
             downloadBtn.disabled = false;
             downloadBtn.innerHTML = '<i class="fas fa-download"></i> 下载';
         }
-        setTimeout(() => {
-            const finalStatusElement = document.getElementById(statusElementId);
-            if (finalStatusElement) finalStatusElement.textContent = '';
-        }, 5000);
     }
 }
 async function deleteFile(key, isDirectory) {
@@ -286,13 +321,19 @@ async function deleteFile(key, isDirectory) {
     }
 }
 async function previewFile(fileKey, fileName, fileSize) {
-    if (fileSize > 2 * 1024 * 1024) {
-        showNotification('文件超过2MB，不支持预览。', 'info');
-        return;
-    }
     const extension = fileName.split('.').pop().toLowerCase();
     const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+    const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
+    const isVideo = videoExtensions.includes(extension);
+    if (!isVideo && fileSize > 5 * 1024 * 1024) {
+        showNotification('文件超过5MB，不支持预览。', 'info');
+        return;
+    }
+    if (isVideo && fileSize > 100 * 1024 * 1024) {
+        showNotification('视频文件超过100MB，不支持在线播放。', 'info');
+        return;
+    }
     const password = getAuthPassword();
     if (!password) {
         showNotification("无法预览：未获取到验证口令。", 'error');
@@ -307,9 +348,14 @@ async function previewFile(fileKey, fileName, fileSize) {
     if (existingImage) {
         existingImage.remove();
     }
+    const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
+    if (existingVideoWrapper) {
+        existingVideoWrapper.remove();
+    }
     try {
-        let isImagePreview = imageExtensions.includes(extension);
-        if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview) {
+        const isImagePreview = imageExtensions.includes(extension);
+        const isVideoPreview = videoExtensions.includes(extension);
+        if (extension === 'pdf' || officeExtensions.includes(extension) || isImagePreview || isVideoPreview) {
             const response = await fetch(`${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}`, {
                 headers: { 'Authorization': `Bearer ${password}` }
             });
@@ -335,6 +381,27 @@ async function previewFile(fileKey, fileName, fileSize) {
                     showNotification('图片加载失败', 'error');
                 };
                 previewIframe.parentElement.appendChild(img);
+            } else if (isVideoPreview) {
+                const previewContent = previewIframe.parentElement;
+                const videoWrapper = document.createElement('div');
+                videoWrapper.className = 'preview-video-wrapper';
+                videoWrapper.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary);';
+                const video = document.createElement('video');
+                video.src = previewUrl;
+                video.className = 'preview-video';
+                video.controls = true;
+                video.autoplay = false;
+                video.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+                video.onloadeddata = () => {
+                    hideLoader();
+                };
+                video.onerror = (e) => {
+                    hideLoader();
+                    showNotification('视频加载失败', 'error');
+                    console.error('视频加载错误:', e);
+                };
+                videoWrapper.appendChild(video);
+                previewContent.appendChild(videoWrapper);
             } else {
                 previewIframe.onload = hideLoader;
                 previewIframe.onerror = () => {
@@ -383,7 +450,7 @@ function showNotification(message, type = 'info') {
         z-index: 10000;
         transform: translateX(100%);
         transition: transform 0.3s ease;
-        max-width: 300px;
+        max-width: 500px;
         font-weight: 500;
     `;
     const icon = type === 'success' ? 'fas fa-check-circle' : type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-info-circle';
@@ -474,18 +541,27 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     `;
     const fileActionsDiv = document.createElement('div');
     fileActionsDiv.className = 'file-actions';
+    let previewButtonHTML = '';
+    if (!isDirectory) {
+        const isVideo = fileType === 'video';
+        const sizeLimit = isVideo ? 1 * 1024 * 1024 * 1024 : 5 * 1024 * 1024;
+        const previewDisabled = item.size > sizeLimit;
+        const disabledTitle = isVideo ? '视频文件超过1GB，不支持在线播放' : '文件超过5MB，不支持预览';
+        if (previewDisabled) {
+            previewButtonHTML = `<button class="preview-button" disabled title="${disabledTitle}">
+                                   <i class="fas fa-eye-slash"></i>
+                                   预览
+                               </button>`;
+        } else {
+            previewButtonHTML = `<button class="preview-button">
+                                   <i class="fas fa-eye"></i>
+                                   预览
+                               </button>`;
+        }
+    }
     fileActionsDiv.innerHTML = `
         ${!isDirectory ? `
-            ${item.size > 2 * 1024 * 1024
-                ? `<button class="preview-button" disabled title="文件超过2MB，不支持预览">
-                       <i class="fas fa-eye-slash"></i>
-                       预览
-                   </button>`
-                : `<button class="preview-button">
-                       <i class="fas fa-eye"></i>
-                       预览
-                   </button>`
-            }
+            ${previewButtonHTML}
             <button class="download-button">
                 <i class="fas fa-download"></i>
                 下载
@@ -694,7 +770,9 @@ async function handleBatchDownload() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${password}`,
             },
-            body: JSON.stringify({ keys: keysToDownload }),
+            body: JSON.stringify({
+                keys: keysToDownload
+            }),
         });
         const result = await response.json();
         if (!response.ok || !result.success) {
@@ -709,14 +787,50 @@ async function handleBatchDownload() {
         const downloadFileWithDelay = async (file, index) => {
             try {
                 const downloadUrl = `${API_BASE_URL}${file.urlPath}`;
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = downloadUrl;
-                a.download = file.filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                downloadedCount++;
+                const fileResponse = await fetch(downloadUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${password}`
+                    }
+                });
+                if (fileResponse.ok) {
+                    if (!fileResponse.body) {
+                        throw new Error('ReadableStream not supported.');
+                    }
+                    const contentLength = fileResponse.headers.get('Content-Length');
+                    const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+                    let loaded = 0;
+                    const chunks = [];
+                    const reader = fileResponse.body.getReader();
+                    while (true) {
+                        const {
+                            done,
+                            value
+                        } = await reader.read();
+                        if (done) break;
+                        chunks.push(value);
+                        loaded += value.length;
+                        if (totalSize) {
+                            const percent = Math.floor((loaded / totalSize) * 100);
+                            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 (${downloadedCount + 1}/${totalFiles}) ${percent}%`;
+                        } else {
+                            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 (${downloadedCount + 1}/${totalFiles}) ${formatBytes(loaded)}`;
+                        }
+                    }
+                    const blob = new Blob(chunks);
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = file.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    downloadedCount++;
+                } else {
+                    console.error(`下载文件 ${file.filename} 失败:`, fileResponse.statusText);
+                    failedCount++;
+                }
             } catch (e) {
                 console.error(`下载文件 ${file.filename} 失败:`, e);
                 failedCount++;
@@ -915,7 +1029,7 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
     fileListElement.innerHTML = `
         <li class="loading-item">
             <div class="loading-spinner"></div>
-            <span>正在加载文件列表... (第 ${currentPage} 页)</span>
+            <span>正在加载文件列表...<br>(第 ${currentPage} 页)</span>
         </li>
     `;
     renderPaginationControls(null);
@@ -1074,6 +1188,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const existingImage = previewModal.querySelector('.preview-image');
             if (existingImage) {
                 existingImage.remove();
+            }
+            const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
+            if (existingVideoWrapper) {
+                const video = existingVideoWrapper.querySelector('video');
+                if (video) {
+                    video.onerror = null;
+                    video.pause();
+                    video.src = '';
+                }
+                existingVideoWrapper.remove();
             }
         };
         closePreviewBtn.addEventListener('click', closeAndCleanup);

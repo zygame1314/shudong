@@ -7,6 +7,8 @@
     --secondary-color: #4A90E2;
     --accent-color: #FF6B6B;
     --warning-color: #F39C12;
+    --warning-gradient: linear-gradient(135deg, #F39C12 0%, #F1C40F 100%);
+    --accent-gradient: linear-gradient(135deg, #FF6B6B 0%, #FF4757 100%);
     --success-color: #27AE60;
     --info-color: #3498DB;
 
