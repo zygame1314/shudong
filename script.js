@@ -22,7 +22,6 @@ const directoryCache = {};
 let isShowingSearchResults = false;
 let isSelectionMode = false;
 let selectedItems = new Set();
-
 let currentPage = 1;
 let totalPages = 1;
 let itemsPerPage = 20;
@@ -538,13 +537,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
 function toggleSelectionMode() {
     isSelectionMode = !isSelectionMode;
     fileListElement.classList.toggle('selection-mode', isSelectionMode);
-
     const selectionModeBtn = document.getElementById('selection-mode-btn');
     const selectAllBtn = document.getElementById('select-all-btn');
     const btnSpan = selectionModeBtn.querySelector('span');
-
     selectionModeBtn.classList.toggle('active', isSelectionMode);
-
     if (isSelectionMode) {
         if (btnSpan) btnSpan.textContent = '退出选择';
         if (selectAllBtn) selectAllBtn.style.display = 'inline-flex';
@@ -555,14 +551,12 @@ function toggleSelectionMode() {
             const selectAllSpan = selectAllBtn.querySelector('span');
             if (selectAllSpan) selectAllSpan.textContent = '全选';
         }
-
         selectedItems.clear();
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
         document.querySelectorAll('.file-list-item.selected').forEach(item => item.classList.remove('selected'));
     }
     updateSelectionToolbar();
 }
-
 function handleItemSelection(checkbox, item) {
     const listItem = checkbox.closest('.file-list-item');
     if (checkbox.checked) {
@@ -574,29 +568,24 @@ function handleItemSelection(checkbox, item) {
     }
     updateSelectionToolbar();
 }
-
 function updateSelectAllButtonState() {
     const selectAllBtn = document.getElementById('select-all-btn');
     if (!selectAllBtn || !isSelectionMode) return;
-
     const checkboxes = document.querySelectorAll('.file-list-item:not(.back-item) .file-checkbox');
     const totalVisibleItems = checkboxes.length;
     const selectedCount = selectedItems.size;
     const btnSpan = selectAllBtn.querySelector('span');
     if (!btnSpan) return;
-
     if (totalVisibleItems > 0 && selectedCount === totalVisibleItems) {
         btnSpan.textContent = '取消全选';
     } else {
         btnSpan.textContent = '全选';
     }
 }
-
 function updateSelectionToolbar() {
     const toolbar = document.getElementById('selection-toolbar');
     const countSpan = document.getElementById('selection-count');
     const selectedCount = selectedItems.size;
-
     if (isSelectionMode && selectedCount > 0) {
         toolbar.classList.add('visible');
         countSpan.textContent = `已选择 ${selectedCount} 项`;
@@ -605,12 +594,10 @@ function updateSelectionToolbar() {
     }
     updateSelectAllButtonState();
 }
-
 function handleSelectAll() {
     const checkboxes = document.querySelectorAll('.file-list-item:not(.back-item) .file-checkbox');
     const allVisibleItems = Array.from(checkboxes).map(cb => cb.closest('.file-list-item'));
     const areAllSelected = selectedItems.size === allVisibleItems.length && allVisibleItems.length > 0;
-
     if (areAllSelected) {
         allVisibleItems.forEach(item => {
             const checkbox = item.querySelector('.file-checkbox');
@@ -698,8 +685,8 @@ async function handleBatchDownload() {
     }
     const downloadBtn = document.getElementById('batch-download-btn');
     downloadBtn.disabled = true;
-    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 打包中...';
-    showNotification(`正在准备下载 ${keysToDownload.length} 个项目...`, 'info');
+    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 获取链接...';
+    showNotification(`正在为 ${keysToDownload.length} 个项目生成下载链接...`, 'info');
     try {
         const response = await fetch(`${API_BASE_URL}/api/batch-download`, {
             method: 'POST',
@@ -709,28 +696,48 @@ async function handleBatchDownload() {
             },
             body: JSON.stringify({ keys: keysToDownload }),
         });
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
-            a.download = `shudong_batch_${timestamp}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            showNotification('文件包下载完成', 'success');
-            toggleSelectionMode();
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || `HTTP error ${response.status}`);
+        }
+        const filesToDownload = result.files;
+        const totalFiles = filesToDownload.length;
+        let downloadedCount = 0;
+        let failedCount = 0;
+        showNotification(`获取到 ${totalFiles} 个下载链接，开始下载...`, 'success');
+        downloadBtn.innerHTML = `<i class="fas fa-download"></i> 下载中 (0/${totalFiles})`;
+        const downloadFileWithDelay = async (file, index) => {
+            try {
+                const downloadUrl = `${API_BASE_URL}${file.urlPath}`;
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = downloadUrl;
+                a.download = file.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                downloadedCount++;
+            } catch (e) {
+                console.error(`下载文件 ${file.filename} 失败:`, e);
+                failedCount++;
+            }
+            downloadBtn.innerHTML = `<i class="fas fa-download"></i> 下载中 (${downloadedCount}/${totalFiles})`;
+            return new Promise(resolve => setTimeout(resolve, 300));
+        };
+        for (let i = 0; i < filesToDownload.length; i++) {
+            await downloadFileWithDelay(filesToDownload[i], i);
+        }
+        if (failedCount > 0) {
+            showNotification(`批量下载完成。成功 ${downloadedCount} 个，失败 ${failedCount} 个。`, 'warning');
         } else {
-            const errorResult = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
-            console.error(`批量下载失败:`, errorResult);
-            showNotification(`批量下载失败: ${errorResult.error || response.statusText}`, 'error');
+            showNotification(`所有 ${totalFiles} 个文件已成功开始下载。`, 'success');
+        }
+        if (isSelectionMode) {
+            toggleSelectionMode();
         }
     } catch (error) {
-        console.error(`批量下载请求出错:`, error);
-        showNotification(`批量下载错误: ${error.message}`, 'error');
+        console.error(`批量下载失败:`, error);
+        showNotification(`批量下载失败: ${error.message}`, 'error');
     } finally {
         downloadBtn.disabled = false;
         downloadBtn.innerHTML = '<i class="fas fa-download"></i> 批量下载';
@@ -834,10 +841,8 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
         emptyLi.innerHTML = emptyMessage;
         fileListElement.appendChild(emptyLi);
     }
-
     renderPaginationControls(paginationData);
 }
-
 function renderPaginationControls(paginationData) {
     let controlsContainer = document.getElementById('pagination-controls');
     if (!controlsContainer) {
@@ -853,15 +858,12 @@ function renderPaginationControls(paginationData) {
         }
     }
     controlsContainer.innerHTML = '';
-
     if (!paginationData || paginationData.totalPages <= 1) {
         controlsContainer.style.display = 'none';
         return;
     }
     controlsContainer.style.display = 'flex';
-
     const { currentPage, totalPages, totalItems } = paginationData;
-
     const prevButton = document.createElement('button');
     prevButton.innerHTML = '<i class="fas fa-chevron-left"></i> 上一页';
     prevButton.className = 'pagination-button';
@@ -872,12 +874,10 @@ function renderPaginationControls(paginationData) {
         }
     };
     controlsContainer.appendChild(prevButton);
-
     const pageInfo = document.createElement('span');
     pageInfo.className = 'pagination-info';
     pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页 (共 ${totalItems} 项)`;
     controlsContainer.appendChild(pageInfo);
-
     const nextButton = document.createElement('button');
     nextButton.innerHTML = '下一页 <i class="fas fa-chevron-right"></i>';
     nextButton.className = 'pagination-button';
@@ -889,7 +889,6 @@ function renderPaginationControls(paginationData) {
     };
     controlsContainer.appendChild(nextButton);
 }
-
 async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
     const password = getAuthPassword();
     if (!password) {
@@ -904,7 +903,6 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
         renderPaginationControls(null);
         return;
     }
-
     const isGlobal = searchTerm.trim() !== '';
     if (!isGlobal) {
         currentPrefix = prefix;
@@ -914,8 +912,6 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
     } else {
         currentPage = page;
     }
-
-
     fileListElement.innerHTML = `
         <li class="loading-item">
             <div class="loading-spinner"></div>
@@ -923,7 +919,6 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
         </li>
     `;
     renderPaginationControls(null);
-
     let urlParams = new URLSearchParams();
     if (isGlobal) {
         console.log(`发起全局搜索: "${searchTerm}", page: ${currentPage}`);
@@ -936,10 +931,7 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
     }
     urlParams.append('page', currentPage.toString());
     urlParams.append('limit', itemsPerPage.toString());
-
     const url = `${FILES_API_URL}?${urlParams.toString()}`;
-
-
     try {
         const response = await fetch(url, {
             method: 'GET',
@@ -976,8 +968,6 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
             };
             currentTotalItems = result.totalItems;
             totalPages = result.totalPages;
-
-
             const currentLocalSearch = searchInput ? searchInput.value.trim() : '';
             renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : currentLocalSearch, paginationData);
         } else {
@@ -1028,11 +1018,9 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBreadcrumb('');
     currentPrefix = '';
     renderPaginationControls(null);
-
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
-
     if (fileListElement) {
         fileListElement.addEventListener('click', (event) => {
             const targetLi = event.target.closest('li.empty-state');
@@ -1170,7 +1158,6 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
-
 const paginationStyle = document.createElement('style');
 paginationStyle.textContent = `
     .pagination-controls {
@@ -1178,7 +1165,7 @@ paginationStyle.textContent = `
         justify-content: center;
         align-items: center;
         padding: 1rem;
-        gap: 0.5rem; /* 按钮和信息之间的间距 */
+        gap: 0.5rem; 
         margin-top: 1rem;
         border-top: 1px solid var(--border-color);
     }
@@ -1206,7 +1193,7 @@ paginationStyle.textContent = `
     .pagination-info {
         color: var(--text-secondary);
         font-size: 0.9rem;
-        margin: 0 0.5rem; /* 与按钮的间距 */
+        margin: 0 0.5rem; 
     }
 `;
 document.head.appendChild(paginationStyle);
