@@ -321,12 +321,13 @@ async function deleteFile(key, isDirectory) {
 }
 async function previewFile(fileKey, fileName, fileSize) {
     const extension = fileName.split('.').pop().toLowerCase();
-    const officeExtensions = ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+    const officeExtensions = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
+    const pdfExtensions = ['pdf'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
     const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
     const isVideo = videoExtensions.includes(extension);
-    if (!isVideo && fileSize > 5 * 1024 * 1024) {
-        showNotification('文件超过5MB，不支持预览。', 'info');
+    if (!isVideo && fileSize > 100 * 1024 * 1024) {
+        showNotification('文件超过100MB，不支持预览。', 'info');
         return;
     }
     if (isVideo && fileSize > 100 * 1024 * 1024) {
@@ -341,28 +342,28 @@ async function previewFile(fileKey, fileName, fileSize) {
     const previewLoader = previewModal.querySelector('.preview-loader');
     previewTitle.textContent = `预览: ${fileName}`;
     previewModal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
     previewLoader.style.display = 'flex';
     previewIframe.style.display = 'none';
     const existingImage = previewModal.querySelector('.preview-image');
-    if (existingImage) {
-        existingImage.remove();
-    }
+    if (existingImage) existingImage.remove();
     const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
-    if (existingVideoWrapper) {
-        existingVideoWrapper.remove();
-    }
+    if (existingVideoWrapper) existingVideoWrapper.remove();
     try {
+        const isOfficePreview = officeExtensions.includes(extension);
+        const isPdfPreview = pdfExtensions.includes(extension);
         const isImagePreview = imageExtensions.includes(extension);
         const isVideoPreview = videoExtensions.includes(extension);
-        if (officeExtensions.includes(extension) || isImagePreview || isVideoPreview) {
-            const isOfficePreview = officeExtensions.includes(extension);
+        if (isOfficePreview || isPdfPreview || isImagePreview || isVideoPreview) {
             const apiUrl = new URL(`${API_BASE_URL}/api/preview`);
             apiUrl.searchParams.append('key', fileKey);
             if (isOfficePreview) {
                 apiUrl.searchParams.append('office', 'true');
             }
             const response = await fetch(apiUrl.toString(), {
-                headers: { 'Authorization': `Bearer ${password}` }
+                headers: {
+                    'Authorization': `Bearer ${password}`
+                }
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
@@ -371,6 +372,7 @@ async function previewFile(fileKey, fileName, fileSize) {
             const previewUrl = data.url;
             const hideLoader = () => {
                 previewLoader.style.display = 'none';
+                previewLoader.style.pointerEvents = 'none';
             };
             if (isImagePreview) {
                 const img = document.createElement('img');
@@ -397,9 +399,7 @@ async function previewFile(fileKey, fileName, fileSize) {
                 video.controls = true;
                 video.autoplay = false;
                 video.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
-                video.onloadeddata = () => {
-                    hideLoader();
-                };
+                video.onloadeddata = hideLoader;
                 video.onerror = (e) => {
                     hideLoader();
                     showNotification('视频加载失败', 'error');
@@ -413,13 +413,20 @@ async function previewFile(fileKey, fileName, fileSize) {
                     hideLoader();
                     showNotification('预览加载失败', 'error');
                 };
-                if (officeExtensions.includes(extension)) {
-                    const xdocinBaseUrl = "https://view.officeapps.live.com/op/view.aspx";
-                    const params = new URLSearchParams({
-                        src: previewUrl
-                    });
-                    previewIframe.src = `${xdocinBaseUrl}?${params.toString()}`;
+                if (isOfficePreview) {
+                    const officeViewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`;
+                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    if (isMobile) {
+                        window.open(officeViewerUrl, '_blank');
+                        previewModal.classList.remove('visible');
+                        previewLoader.style.display = 'none';
+                        return;
+                    } else {
+                        previewIframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+                        previewIframe.src = officeViewerUrl;
+                    }
                 } else {
+                    previewIframe.removeAttribute('sandbox');
                     previewIframe.src = previewUrl;
                 }
                 previewIframe.style.display = 'block';
@@ -567,9 +574,9 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     let previewButtonHTML = '';
     if (!isDirectory) {
         const isVideo = fileType === 'video';
-        const sizeLimit = isVideo ? 1 * 1024 * 1024 * 1024 : 5 * 1024 * 1024;
+        const sizeLimit = isVideo ? 1 * 1024 * 1024 * 1024 : 100 * 1024 * 1024;
         const previewDisabled = item.size > sizeLimit;
-        const disabledTitle = isVideo ? '视频文件超过1GB，不支持在线播放' : '文件超过5MB，不支持预览';
+        const disabledTitle = isVideo ? '视频文件超过1GB，不支持在线播放' : '文件超过100MB，不支持预览';
         if (previewDisabled) {
             previewButtonHTML = `<button class="preview-button" disabled title="${disabledTitle}">
                                    <i class="fas fa-eye-slash"></i>
@@ -1207,6 +1214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closePreviewBtn && previewModal) {
         const closeAndCleanup = () => {
             previewModal.classList.remove('visible');
+            document.body.style.overflow = '';
             previewIframe.src = '';
             const existingImage = previewModal.querySelector('.preview-image');
             if (existingImage) {
