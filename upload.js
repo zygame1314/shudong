@@ -182,37 +182,59 @@ function updateProgress(percentage, status) {
     progressStatus.textContent = status;
 }
 function showNotification(message, type = 'info') {
+    let container = document.getElementById('notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'notification-container';
+        container.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        `;
+        document.body.appendChild(container);
+    }
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     notification.style.cssText = `
-        position: fixed;
-        top: 80px;
-        right: 20px;
         padding: 1rem 1.5rem;
         background: ${type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#3498DB'};
         color: white;
         border-radius: 10px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000;
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
+        transform: translateX(calc(100% + 20px));
+        transition: transform 0.4s ease, opacity 0.4s ease;
         max-width: 500px;
         font-weight: 500;
+        opacity: 0;
+        cursor: pointer;
     `;
     const icon = type === 'success' ? 'fas fa-check-circle' : type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-info-circle';
     notification.innerHTML = `<i class="${icon}" style="margin-right: 0.5rem;"></i>${message}`;
-    document.body.appendChild(notification);
+    container.appendChild(notification);
     setTimeout(() => {
         notification.style.transform = 'translateX(0)';
-    }, 100);
-    setTimeout(() => {
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
+        notification.style.opacity = '1';
+    }, 10);
+    const removeNotification = () => {
+        notification.style.transform = 'translateX(calc(100% + 20px))';
+        notification.style.opacity = '0';
+        notification.addEventListener('transitionend', () => {
+            notification.remove();
+            if (container.children.length === 0 && container.parentNode) {
+                container.remove();
             }
-        }, 300);
-    }, 3000);
+        });
+    };
+    const timeoutId = setTimeout(removeNotification, 3000);
+    notification.addEventListener('click', () => {
+        clearTimeout(timeoutId);
+        removeNotification();
+    });
 }
 function showUploadStatus(message, type = 'info') {
     uploadStatus.innerHTML = `
@@ -232,8 +254,6 @@ function fillPasswordIfAuthenticated() {
         const password = getAuthPassword();
         if (password && passwordInput) {
             passwordInput.value = password;
-            console.log('已自动填充验证口令。');
-            showNotification('已自动填充验证口令', 'info');
         }
     }
 }
