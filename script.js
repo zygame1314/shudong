@@ -140,10 +140,10 @@ function getFileType(fileName) {
         'pdf': 'pdf',
         'doc': 'doc',
         'docx': 'doc',
-        'xls': 'doc',
-        'xlsx': 'doc',
-        'ppt': 'doc',
-        'pptx': 'doc',
+        'xls': 'excel',
+        'xlsx': 'excel',
+        'ppt': 'ppt',
+        'pptx': 'ppt',
         'txt': 'text',
         'jpg': 'image',
         'jpeg': 'image',
@@ -972,6 +972,7 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
         }
         if (currentFilter !== 'all') {
             filteredFiles = filteredFiles.filter(file => {
+                if (file.isDirectory) return true;
                 const fileType = getFileType(file.name);
                 return fileType === currentFilter;
             });
@@ -980,7 +981,7 @@ function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = 
         displayedFiles.forEach((file, index) => {
             if (!file.isDirectoryPlaceholder) {
                 setTimeout(() => {
-                    const li = createFileListItem(file, false, isGlobalSearch);
+                    const li = createFileListItem(file, !!file.isDirectory, isGlobalSearch);
                     fileListElement.appendChild(li);
                 }, (displayedDirectories.length + index) * 50);
             }

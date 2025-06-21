@@ -348,6 +348,18 @@
     background: linear-gradient(135deg, #3498DB, #2980B9);
 }
 
+.file-icon.ppt {
+    background: linear-gradient(135deg, #FF7043, #D04423);
+}
+
+.file-icon.excel {
+    background: linear-gradient(135deg, #43B883, #1D6F42);
+}
+
+.file-icon.text {
+    background: linear-gradient(135deg, #bdc3c7, #95a5a6);
+}
+
 .file-icon.image {
     background: linear-gradient(135deg, #9B59B6, #8E44AD);
 }

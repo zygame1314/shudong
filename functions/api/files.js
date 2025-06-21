@@ -73,11 +73,19 @@ export async function onRequestGet({ request, env }) {
       const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
       const { total: totalItems } = await countStmt.bind(searchCondition).first();
       const totalPages = Math.ceil(totalItems / limit);
-      const searchStmt = DB.prepare('SELECT key, name, size, uploaded FROM files WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?');
+      const searchStmt = DB.prepare('SELECT key, name, size, uploaded, is_directory FROM files WHERE name LIKE ? ORDER BY is_directory DESC, name ASC LIMIT ? OFFSET ?');
       const { results: filesResults } = await searchStmt.bind(searchCondition, limit, offset).all();
+      const responseItems = filesResults.map(f => ({
+        key: f.key,
+        name: f.name,
+        size: f.size,
+        uploaded: f.uploaded,
+        isDirectory: !!f.is_directory,
+        isSearchResult: true
+      }));
       return new Response(JSON.stringify({
         success: true,
-        files: filesResults.map(f => ({ ...f, isSearchResult: true })),
+        files: responseItems,
         directories: [],
         isGlobalSearch: true,
         currentPage: page,
