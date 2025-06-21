@@ -591,6 +591,7 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
         </div>
         <div class="file-info">
             <div class="file-name">${item.name}</div>
+            ${isGlobalSearch && item.parent_path ? `<div class="file-path">${item.parent_path || '根目录'}</div>` : ''}
             ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)}</div>` : '<div class="file-meta">文件夹</div>'}
         </div>
     `;
@@ -1301,6 +1302,14 @@ function updateUploadButtonLink() {
 }
 const style = document.createElement('style');
 style.textContent = `
+    .file-path {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
     @keyframes particleFloat {
         0% { transform: translateY(0px) rotate(0deg); opacity: 1; }
         100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
