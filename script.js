@@ -1306,7 +1306,6 @@ style.textContent = `
         font-size: 0.8rem;
         color: var(--text-secondary);
         margin-top: 4px;
-        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
