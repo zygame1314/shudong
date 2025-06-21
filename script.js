@@ -144,7 +144,7 @@ function getFileType(fileName) {
         'xlsx': 'doc',
         'ppt': 'doc',
         'pptx': 'doc',
-        'txt': 'doc',
+        'txt': 'text',
         'jpg': 'image',
         'jpeg': 'image',
         'png': 'image',
@@ -325,6 +325,7 @@ async function previewFile(fileKey, fileName, fileSize) {
     const pdfExtensions = ['pdf'];
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
     const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
+    const txtExtensions = ['txt'];
     const isVideo = videoExtensions.includes(extension);
     if (!isVideo && fileSize > 100 * 1024 * 1024) {
         showNotification('文件超过100MB，不支持预览。', 'info');
@@ -342,23 +343,28 @@ async function previewFile(fileKey, fileName, fileSize) {
     const previewLoader = previewModal.querySelector('.preview-loader');
     previewTitle.textContent = `预览: ${fileName}`;
     previewModal.classList.add('visible');
-    document.body.style.overflow = 'hidden';
     previewLoader.style.display = 'flex';
     previewIframe.style.display = 'none';
     const existingImage = previewModal.querySelector('.preview-image');
     if (existingImage) existingImage.remove();
     const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
     if (existingVideoWrapper) existingVideoWrapper.remove();
+    const existingTextWrapper = previewModal.querySelector('.preview-text-wrapper');
+    if (existingTextWrapper) existingTextWrapper.remove();
     try {
         const isOfficePreview = officeExtensions.includes(extension);
         const isPdfPreview = pdfExtensions.includes(extension);
         const isImagePreview = imageExtensions.includes(extension);
         const isVideoPreview = videoExtensions.includes(extension);
-        if (isOfficePreview || isPdfPreview || isImagePreview || isVideoPreview) {
+        const isTxtPreview = txtExtensions.includes(extension);
+        if (isOfficePreview || isPdfPreview || isImagePreview || isVideoPreview || isTxtPreview) {
             const apiUrl = new URL(`${API_BASE_URL}/api/preview`);
             apiUrl.searchParams.append('key', fileKey);
             if (isOfficePreview) {
                 apiUrl.searchParams.append('office', 'true');
+            }
+            if (isTxtPreview) {
+                apiUrl.searchParams.append('type', 'text');
             }
             const response = await fetch(apiUrl.toString(), {
                 headers: {
@@ -369,67 +375,86 @@ async function previewFile(fileKey, fileName, fileSize) {
             if (!response.ok || !data.success) {
                 throw new Error(data.error || '无法获取文件预览链接');
             }
-            const previewUrl = data.url;
             const hideLoader = () => {
                 previewLoader.style.display = 'none';
                 previewLoader.style.pointerEvents = 'none';
             };
-            if (isImagePreview) {
-                const img = document.createElement('img');
-                img.src = previewUrl;
-                img.className = 'preview-image';
-                img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
-                img.onload = () => {
-                    hideLoader();
-                    img.style.display = 'block';
-                };
-                img.onerror = () => {
-                    hideLoader();
-                    showNotification('图片加载失败', 'error');
-                };
-                previewIframe.parentElement.appendChild(img);
-            } else if (isVideoPreview) {
-                const previewContent = previewIframe.parentElement;
-                const videoWrapper = document.createElement('div');
-                videoWrapper.className = 'preview-video-wrapper';
-                videoWrapper.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary);';
-                const video = document.createElement('video');
-                video.src = previewUrl;
-                video.className = 'preview-video';
-                video.controls = true;
-                video.autoplay = false;
-                video.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
-                video.onloadeddata = hideLoader;
-                video.onerror = (e) => {
-                    hideLoader();
-                    showNotification('视频加载失败', 'error');
-                    console.error('视频加载错误:', e);
-                };
-                videoWrapper.appendChild(video);
-                previewContent.appendChild(videoWrapper);
+            if (isTxtPreview) {
+                const textPreviewWrapper = document.createElement('div');
+                textPreviewWrapper.className = 'preview-text-wrapper';
+                textPreviewWrapper.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--background-primary); color: var(--text-primary); overflow: auto;';
+                const pre = document.createElement('pre');
+                pre.className = 'preview-text';
+                pre.style.cssText = 'white-space: pre-wrap; word-wrap: break-word; padding: 20px; margin: 0; font-family: var(--font-mono); font-size: 0.9rem;';
+                pre.textContent = data.content;
+                textPreviewWrapper.appendChild(pre);
+                previewIframe.parentElement.appendChild(textPreviewWrapper);
+                hideLoader();
             } else {
-                previewIframe.onload = hideLoader;
-                previewIframe.onerror = () => {
-                    hideLoader();
-                    showNotification('预览加载失败', 'error');
-                };
-                if (isOfficePreview) {
-                    const officeViewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`;
-                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                    if (isMobile) {
-                        window.open(officeViewerUrl, '_blank');
-                        previewModal.classList.remove('visible');
-                        previewLoader.style.display = 'none';
-                        return;
-                    } else {
-                        previewIframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
-                        previewIframe.src = officeViewerUrl;
-                    }
+                const previewUrl = data.url;
+                if (isImagePreview) {
+                    const img = document.createElement('img');
+                    img.src = previewUrl;
+                    img.className = 'preview-image';
+                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
+                    img.onload = () => {
+                        hideLoader();
+                        img.style.display = 'block';
+                    };
+                    img.onerror = () => {
+                        hideLoader();
+                        showNotification('图片加载失败', 'error');
+                    };
+                    previewIframe.parentElement.appendChild(img);
+                } else if (isVideoPreview) {
+                    const previewContent = previewIframe.parentElement;
+                    const videoWrapper = document.createElement('div');
+                    videoWrapper.className = 'preview-video-wrapper';
+                    videoWrapper.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary);';
+                    const video = document.createElement('video');
+                    video.src = previewUrl;
+                    video.className = 'preview-video';
+                    video.controls = true;
+                    video.autoplay = false;
+                    video.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+                    video.onloadeddata = hideLoader;
+                    video.onerror = (e) => {
+                        hideLoader();
+                        showNotification('视频加载失败', 'error');
+                        console.error('视频加载错误:', e);
+                    };
+                    videoWrapper.appendChild(video);
+                    previewContent.appendChild(videoWrapper);
                 } else {
-                    previewIframe.removeAttribute('sandbox');
-                    previewIframe.src = previewUrl;
+                    previewIframe.onload = hideLoader;
+                    previewIframe.onerror = () => {
+                        hideLoader();
+                        showNotification('预览加载失败', 'error');
+                    };
+                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    if (isOfficePreview) {
+                        const officeViewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`;
+                        if (isMobile) {
+                            window.open(officeViewerUrl, '_blank');
+                            previewModal.classList.remove('visible');
+                            previewLoader.style.display = 'none';
+                            return;
+                        } else {
+                            previewIframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+                            previewIframe.src = officeViewerUrl;
+                        }
+                    } else {
+                        if (isMobile) {
+                            window.open(previewUrl, '_blank');
+                            previewModal.classList.remove('visible');
+                            previewLoader.style.display = 'none';
+                            return;
+                        }
+                        previewIframe.removeAttribute('sandbox');
+                        previewIframe.src = previewUrl;
+                    }
+                    previewIframe.style.display = 'block';
                 }
-                previewIframe.style.display = 'block';
             }
         } else {
             showNotification('该文件类型不支持预览。', 'info');
@@ -1229,6 +1254,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     video.src = '';
                 }
                 existingVideoWrapper.remove();
+            }
+            const existingTextWrapper = previewModal.querySelector('.preview-text-wrapper');
+            if (existingTextWrapper) {
+                existingTextWrapper.remove();
             }
         };
         closePreviewBtn.addEventListener('click', closeAndCleanup);

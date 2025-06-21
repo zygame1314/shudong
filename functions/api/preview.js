@@ -49,6 +49,7 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const key = url.searchParams.get('key');
   const isOfficePreview = url.searchParams.get('office') === 'true';
+  const previewType = url.searchParams.get('type');
   if (!key) {
     return new Response(JSON.stringify({
       success: false,
@@ -66,6 +67,18 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ success: false, error: 'File not found.' }), {
         status: 404,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+    if (previewType === 'text') {
+      const textContent = await object.text();
+      return new Response(JSON.stringify({
+        success: true,
+        content: textContent
+      }), {
+        status: 200,
+        headers: addCorsHeaders({
+          'Content-Type': 'application/json'
+        }),
       });
     }
     const expires = Date.now() + 300 * 1000;
