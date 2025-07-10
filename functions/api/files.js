@@ -151,7 +151,7 @@ export async function onRequestGet({ request, env }) {
     });
   }
 }
-export async function onRequestDelete({ request, env }) {
+export async function onRequestDelete({ request, env, waitUntil }) {
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
       status: 401,
@@ -205,46 +205,53 @@ export async function onRequestDelete({ request, env }) {
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
-    const r2KeysToDelete = new Set();
-    const dbKeysToDelete = new Set();
-    for (const itemKey of itemsToDelete) {
-      const isDirectory = itemKey.endsWith('/');
-      if (isDirectory) {
-        const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
-        const { results } = await stmt.bind(`${itemKey}%`).all();
-        if (results) {
-          results.forEach(row => {
-            r2KeysToDelete.add(row.key);
-            dbKeysToDelete.add(row.key);
-          });
+    const deleteOperations = async () => {
+      try {
+        const r2KeysToDelete = new Set();
+        const dbKeysToDelete = new Set();
+        for (const itemKey of itemsToDelete) {
+          const isDirectory = itemKey.endsWith('/');
+          if (isDirectory) {
+            const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
+            const { results } = await stmt.bind(`${itemKey}%`).all();
+            if (results) {
+              results.forEach(row => {
+                r2KeysToDelete.add(row.key);
+                dbKeysToDelete.add(row.key);
+              });
+            }
+          } else {
+            r2KeysToDelete.add(itemKey);
+            dbKeysToDelete.add(itemKey);
+          }
         }
-      } else {
-        r2KeysToDelete.add(itemKey);
-        dbKeysToDelete.add(itemKey);
+        const finalR2Keys = Array.from(r2KeysToDelete);
+        const finalDbKeys = Array.from(dbKeysToDelete);
+        if (finalR2Keys.length > 0) {
+          await R2_BUCKET.delete(finalR2Keys);
+          console.log(`Successfully requested deletion of ${finalR2Keys.length} keys from R2.`);
+        }
+        if (finalDbKeys.length > 0) {
+          const batchSize = 100;
+          for (let i = 0; i < finalDbKeys.length; i += batchSize) {
+            const batch = finalDbKeys.slice(i, i + batchSize);
+            const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${batch.map(() => '?').join(',')})`);
+            await stmt.bind(...batch).run();
+          }
+          console.log(`Successfully deleted ${finalDbKeys.length} keys from D1.`);
+        }
+      } catch (error) {
+        console.error(`Error during background deletion:`, error);
       }
-    }
-    const finalR2Keys = Array.from(r2KeysToDelete);
-    const finalDbKeys = Array.from(dbKeysToDelete);
-    if (finalR2Keys.length > 0) {
-      await R2_BUCKET.delete(finalR2Keys);
-      console.log(`Successfully requested deletion of ${finalR2Keys.length} keys from R2.`);
-    }
-    if (finalDbKeys.length > 0) {
-      const batchSize = 100;
-      for (let i = 0; i < finalDbKeys.length; i += batchSize) {
-        const batch = finalDbKeys.slice(i, i + batchSize);
-        const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${batch.map(() => '?').join(',')})`);
-        await stmt.bind(...batch).run();
-      }
-      console.log(`Successfully deleted ${finalDbKeys.length} keys from D1.`);
-    }
-    return new Response(JSON.stringify({ success: true, deletedCount: finalDbKeys.length }), {
-      status: 200,
+    };
+    waitUntil(deleteOperations());
+    return new Response(JSON.stringify({ success: true, message: `Deletion of ${itemsToDelete.length} item(s) initiated.` }), {
+      status: 202,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });
   } catch (error) {
-    console.error(`Error deleting from R2:`, error);
-    return new Response(JSON.stringify({ success: false, error: 'Failed to delete file(s).' }), {
+    console.error(`Error initiating deletion:`, error);
+    return new Response(JSON.stringify({ success: false, error: 'Failed to initiate file deletion.' }), {
       status: 500,
       headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
     });

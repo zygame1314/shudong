@@ -46,7 +46,7 @@ async function ensureDirectoryExists(db, fullPath, env) {
     }
   }
 }
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   try {
     const R2_BUCKET = env.R2_bucket;
     const DB = env.DB;
@@ -108,19 +108,22 @@ export async function onRequestPost({ request, env }) {
         console.warn(`R2 put for ${filename} returned:`, uploadedObject);
       }
       console.log(`Successfully uploaded ${filename} to R2.`);
-      await ensureDirectoryExists(DB, filename, env);
-      try {
-        const stmt = DB.prepare(
-          'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        );
-        const parts = filename.split('/');
-        const name = parts.pop();
-        const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
-        await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false).run();
-        console.log(`Successfully inserted file metadata for ${filename} into D1.`);
-      } catch (dbError) {
-        console.error(`Error inserting file metadata for ${filename} into D1:`, dbError);
-      }
+      const dbOperations = async () => {
+        try {
+          await ensureDirectoryExists(DB, filename, env);
+          const stmt = DB.prepare(
+            'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          );
+          const parts = filename.split('/');
+          const name = parts.pop();
+          const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
+          await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false).run();
+          console.log(`Successfully inserted file metadata for ${filename} into D1.`);
+        } catch (dbError) {
+          console.error(`Error during background database operations for ${filename}:`, dbError);
+        }
+      };
+      waitUntil(dbOperations());
       return new Response(JSON.stringify({ success: true, filename: filename }), {
         status: 200,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
