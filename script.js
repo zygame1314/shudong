@@ -327,12 +327,12 @@ async function previewFile(fileKey, fileName, fileSize) {
     const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
     const txtExtensions = ['txt'];
     const isVideo = videoExtensions.includes(extension);
-    if (!isVideo && fileSize > 100 * 1024 * 1024) {
-        showNotification('文件超过100MB，不支持预览。', 'info');
+    if (!isVideo && fileSize > 300 * 1024 * 1024) {
+        showNotification('文件超过300MB，不支持预览。', 'info');
         return;
     }
-    if (isVideo && fileSize > 100 * 1024 * 1024) {
-        showNotification('视频文件超过100MB，不支持在线播放。', 'info');
+    if (isVideo && fileSize > 300 * 1024 * 1024) {
+        showNotification('视频文件超过300MB，不支持在线播放。', 'info');
         return;
     }
     const password = getAuthPassword();
@@ -600,9 +600,9 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     let previewButtonHTML = '';
     if (!isDirectory) {
         const isVideo = fileType === 'video';
-        const sizeLimit = isVideo ? 1 * 1024 * 1024 * 1024 : 100 * 1024 * 1024;
+        const sizeLimit = isVideo ? 300 * 1024 * 1024 : 300 * 1024 * 1024;
         const previewDisabled = item.size > sizeLimit;
-        const disabledTitle = isVideo ? '视频文件超过1GB，不支持在线播放' : '文件超过100MB，不支持预览';
+        const disabledTitle = isVideo ? '视频文件超过300MB，不支持在线播放' : '文件超过300MB，不支持预览';
         if (previewDisabled) {
             previewButtonHTML = `<button class="preview-button" disabled title="${disabledTitle}">
                                    <i class="fas fa-eye-slash"></i>
