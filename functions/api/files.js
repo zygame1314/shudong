@@ -329,7 +329,10 @@ export async function onRequestPut({ request, env }) {
       for (const { source, destination } of r2ObjectsToCopy) {
         const head = await R2_BUCKET.head(source);
         if (head) {
-          await R2_BUCKET.copy(source, destination, { httpMetadata: head.httpMetadata });
+          await R2_BUCKET.put(destination, null, {
+            copySource: source,
+            httpMetadata: head.httpMetadata
+          });
         }
       }
       await DB.batch(dbUpdates);
@@ -342,7 +345,10 @@ export async function onRequestPut({ request, env }) {
       if (head === null) {
         return new Response(JSON.stringify({ success: false, error: 'File not found in R2' }), { status: 404, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
       }
-      await R2_BUCKET.copy(key, newKey, { httpMetadata: head.httpMetadata });
+      await R2_BUCKET.put(newKey, null, {
+        copySource: key,
+        httpMetadata: head.httpMetadata
+      });
       await R2_BUCKET.delete(key);
       const stmt = DB.prepare('UPDATE files SET key = ?, name = ? WHERE key = ?');
       await stmt.bind(newKey, newName, key).run();
