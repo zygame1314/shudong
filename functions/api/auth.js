@@ -8,18 +8,8 @@ const addCorsHeaders = (headers = {}) => {
     'Access-Control-Max-Age': '86400',
   };
 };
-
 export async function onRequestPost({ request, env }) {
   try {
-    const correctPassword = env.AUTH_PASSWORD;
-    if (!correctPassword) {
-      console.error("Error: AUTH_PASSWORD environment variable is not set.");
-      return new Response(JSON.stringify({ success: false, error: 'Server configuration error.' }), {
-        status: 500,
-        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
-      });
-    }
-
     let requestData;
     try {
       requestData = await request.json();
@@ -29,16 +19,23 @@ export async function onRequestPost({ request, env }) {
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
-
-    const providedPassword = requestData?.password;
-
+    const { password: providedPassword, type } = requestData;
     if (!providedPassword) {
       return new Response(JSON.stringify({ success: false, error: 'Password is required.' }), {
         status: 400,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
       });
     }
-
+    const isAdminAuth = type === 'admin';
+    const correctPassword = isAdminAuth ? env.ADMIN_PASSWORD : env.AUTH_PASSWORD;
+    const passwordEnvVarName = isAdminAuth ? 'ADMIN_PASSWORD' : 'AUTH_PASSWORD';
+    if (!correctPassword) {
+      console.error(`Error: ${passwordEnvVarName} environment variable is not set.`);
+      return new Response(JSON.stringify({ success: false, error: 'Server configuration error.' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
     if (providedPassword === correctPassword) {
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
@@ -58,7 +55,6 @@ export async function onRequestPost({ request, env }) {
     });
   }
 }
-
 export async function onRequest(context) {
   if (context.request.method === 'OPTIONS') {
     return new Response(null, {
@@ -66,11 +62,9 @@ export async function onRequest(context) {
       headers: addCorsHeaders(),
     });
   }
-
   if (context.request.method === 'POST') {
     return onRequestPost(context);
   }
-
   return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
     status: 405,
     headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'POST, OPTIONS' }),

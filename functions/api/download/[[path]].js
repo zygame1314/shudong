@@ -89,6 +89,19 @@ export async function onRequest(context) {
     for (const [key, value] of Object.entries(corsHeaders)) {
         headers.set(key, value);
     }
+    const updateDownloads = async () => {
+      try {
+        const DB = env.DB;
+        if (DB) {
+          const stmt = DB.prepare('UPDATE files SET downloads = downloads + 1 WHERE key = ?');
+          await stmt.bind(key).run();
+          console.log(`Incremented download count for ${key}`);
+        }
+      } catch (dbError) {
+        console.error(`Failed to update download count for ${key}:`, dbError);
+      }
+    };
+    context.waitUntil(updateDownloads());
     return new Response(object.body, { headers });
   } catch (error) {
     console.error(`Error fetching key "${key}" from R2:`, error);

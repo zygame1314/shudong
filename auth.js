@@ -1,10 +1,33 @@
 const authSection = document.getElementById('auth-section');
 const loginButton = document.getElementById('login-button');
+const adminLoginButton = document.getElementById('admin-login-button');
 const uploadLink = document.getElementById('upload-btn-link');
 const authStatusSpan = document.getElementById('auth-status');
 const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
 let isAuthenticated = false;
+let isAdminAuthenticated = false;
 let currentPassword = null;
+let currentAdminPassword = null;
+function getAdminPassword() {
+   if (isAdminAuthenticated && currentAdminPassword) {
+       return currentAdminPassword;
+   }
+   const storedAdminAuth = sessionStorage.getItem('adminAuth');
+   if (storedAdminAuth) {
+       try {
+           const adminAuthData = JSON.parse(storedAdminAuth);
+           if (adminAuthData.password) {
+               isAdminAuthenticated = true;
+               currentAdminPassword = adminAuthData.password;
+               return currentAdminPassword;
+           }
+       } catch (e) {
+           console.error('Error parsing admin auth data from sessionStorage', e);
+           sessionStorage.removeItem('adminAuth');
+       }
+   }
+   return null;
+}
 function createAuthModal(options = {}) {
     const {
         title = '身份验证',
@@ -235,7 +258,10 @@ function createAuthModal(options = {}) {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ password: password }),
+                    body: JSON.stringify({
+                        password: password,
+                        type: options.isAdmin ? 'admin' : 'user'
+                    }),
                 });
                 const result = await response.json();
                 if (response.ok && result.success) {
@@ -307,6 +333,28 @@ async function checkAuth() {
         console.log('用户取消验证或验证失败:', error.message);
     }
 }
+async function checkAdminAuth() {
+   try {
+       const password = await createAuthModal({
+           title: '管理员验证',
+           subtitle: '请输入管理员密码以进行高级操作',
+           placeholder: '请输入管理员密码',
+           buttonText: '验证',
+           iconClass: 'fa-user-shield',
+           performValidation: true,
+           isAdmin: true
+       });
+       isAdminAuthenticated = true;
+       currentAdminPassword = password;
+       sessionStorage.setItem('adminAuth', JSON.stringify({ password: password }));
+       updateUIBasedOnAuth();
+       if (typeof showNotification === 'function') {
+           showNotification('管理员验证成功！', 'success');
+       }
+   } catch (error) {
+       console.log('管理员验证取消或失败:', error.message);
+   }
+}
 function checkStoredAuth() {
     const storedAuthData = localStorage.getItem('authData');
     if (storedAuthData) {
@@ -345,6 +393,26 @@ function updateUIBasedOnAuth() {
             loginButton.style.background = 'var(--success-color)';
             loginButton.style.cursor = 'not-allowed';
         }
+       if (adminLoginButton) {
+           adminLoginButton.style.display = 'inline-flex';
+           if (isAdminAuthenticated) {
+               adminLoginButton.innerHTML = `
+                   <i class="fas fa-user-check"></i>
+                   <span>管理员</span>
+               `;
+               adminLoginButton.disabled = true;
+               adminLoginButton.style.background = 'var(--accent-color)';
+                adminLoginButton.style.cursor = 'not-allowed';
+           } else {
+                adminLoginButton.innerHTML = `
+                   <i class="fas fa-user-shield"></i>
+                   <span>管理员验证</span>
+               `;
+               adminLoginButton.disabled = false;
+               adminLoginButton.style.background = '';
+               adminLoginButton.style.cursor = 'pointer';
+           }
+       }
         if (uploadLink) {
             const currentPath = typeof getCurrentPath === 'function' ? getCurrentPath() : '';
             uploadLink.href = `upload.html${currentPath ? '?path=' + encodeURIComponent(currentPath) : ''}`;
@@ -364,6 +432,9 @@ function updateUIBasedOnAuth() {
             loginButton.style.background = '';
             loginButton.style.cursor = 'pointer';
         }
+       if (adminLoginButton) {
+           adminLoginButton.style.display = 'none';
+       }
         if (uploadLink) {
             uploadLink.style.display = 'none';
         }
@@ -383,6 +454,9 @@ function logout() {
     isAuthenticated = false;
     currentPassword = null;
     localStorage.removeItem('authData');
+   sessionStorage.removeItem('adminAuth');
+   isAdminAuthenticated = false;
+   currentAdminPassword = null;
     console.log('用户登出，清除验证信息');
     updateUIBasedOnAuth();
     if (typeof directoryCache !== 'undefined') {
@@ -404,8 +478,12 @@ function logout() {
 if (loginButton) {
     loginButton.addEventListener('click', checkAuth);
 }
+if (adminLoginButton) {
+   adminLoginButton.addEventListener('click', checkAdminAuth);
+}
 document.addEventListener('DOMContentLoaded', () => {
     checkStoredAuth();
+   getAdminPassword();
     updateUIBasedOnAuth();
     const style = document.createElement('style');
     style.textContent = `

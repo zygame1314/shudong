@@ -276,40 +276,50 @@ async function downloadFile(fileKey, downloadBtn) {
     }
 }
 async function deleteFile(key, isDirectory) {
-    try {
-        await createAuthModal({
-            title: '确认删除',
-            subtitle: `你确定要永久删除 "${key}" 吗？此操作不可逆！`,
-            placeholder: '请输入管理员密码以确认删除',
-            buttonText: '确认删除',
-            iconClass: 'fa-exclamation-triangle',
-            action: async (adminPassword) => {
-                const password = getAuthPassword();
-                if (!password) {
-                    throw new Error("无法删除：未获取到验证口令。请重新验证。");
-                }
-                const response = await fetch(`${FILES_API_URL}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${password}`,
-                    },
-                    body: JSON.stringify({
-                        key: key,
-                        adminPassword: adminPassword
-                    }),
-                });
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || '删除失败，请检查管理员密码或稍后重试');
-                }
-                showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
-                const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
-                if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
-                if (directoryCache[parentPrefix]) delete directoryCache[parentPrefix];
-                fetchAndDisplayFiles(currentPrefix, '', currentPage);
-            }
+    const performDelete = async (adminPass) => {
+        const password = getAuthPassword();
+        if (!password) {
+            throw new Error("无法删除：未获取到验证口令。请重新验证。");
+        }
+        const response = await fetch(`${FILES_API_URL}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({
+                key: key,
+                adminPassword: adminPass
+            }),
         });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || '删除失败，请检查管理员密码或稍后重试');
+        }
+        showNotification(`${isDirectory ? '文件夹' : '文件'} "${key}" 已删除`, 'success');
+        const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+        if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+        if (directoryCache[parentPrefix]) delete directoryCache[parentPrefix];
+        fetchAndDisplayFiles(currentPrefix, '', currentPage);
+    };
+    try {
+        const adminPassword = getAdminPassword();
+        if (adminPassword) {
+            if (confirm(`你确定要永久删除 "${key}" 吗？此操作不可逆！`)) {
+                await performDelete(adminPassword);
+            } else {
+                showNotification('删除操作已取消', 'info');
+            }
+        } else {
+            await createAuthModal({
+                title: '确认删除',
+                subtitle: `你确定要永久删除 "${key}" 吗？此操作不可逆！ (提示: 可在右上角进行全局管理员验证以简化操作)`,
+                placeholder: '请输入管理员密码以确认删除',
+                buttonText: '确认删除',
+                iconClass: 'fa-exclamation-triangle',
+                action: performDelete
+            });
+        }
     } catch (error) {
         if (error.message !== '用户取消验证') {
             showNotification(`删除操作失败: ${error.message}`, 'error');
@@ -592,7 +602,7 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
         <div class="file-info">
             <div class="file-name">${item.name}</div>
             ${isGlobalSearch && item.parent_path ? `<div class="file-path">${item.parent_path || '根目录'}</div>` : ''}
-            ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)}</div>` : '<div class="file-meta">文件夹</div>'}
+            ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)} • <i class="fas fa-download"></i> ${item.downloads || 0}</div>` : '<div class="file-meta">文件夹</div>'}
         </div>
     `;
     const fileActionsDiv = document.createElement('div');
@@ -623,6 +633,9 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
                 下载
             </button>
         ` : ''}
+        <button class="rename-button">
+           <i class="fas fa-pencil-alt"></i>
+        </button>
         <button class="delete-button">
             <i class="fas fa-trash"></i>
         </button>
@@ -644,6 +657,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     if (deleteBtn) {
         deleteBtn.onclick = () => deleteFile(item.key, isDirectory);
     }
+   const renameBtn = fileActionsDiv.querySelector('.rename-button');
+   if (renameBtn) {
+       renameBtn.onclick = () => renameFile(item.key, item.name, isDirectory);
+   }
     if (isDirectory) {
         fileItemDiv.style.cursor = 'pointer';
         fileItemDiv.onclick = (e) => {
@@ -754,47 +771,57 @@ async function handleBatchDelete() {
         showNotification('没有选择任何项目', 'info');
         return;
     }
-    try {
-        await createAuthModal({
-            title: '确认批量删除',
-            subtitle: `你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！`,
-            placeholder: '请输入管理员密码以确认删除',
-            buttonText: '确认删除',
-            iconClass: 'fa-exclamation-triangle',
-            action: async (adminPassword) => {
-                const password = getAuthPassword();
-                if (!password) {
-                    throw new Error("无法删除：未获取到验证口令。请重新验证。");
-                }
-                const response = await fetch(`${FILES_API_URL}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${password}`,
-                    },
-                    body: JSON.stringify({
-                        keys: keysToDelete,
-                        adminPassword: adminPassword
-                    }),
-                });
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || '批量删除失败，请检查管理员密码或稍后重试');
-                }
-                showNotification(`成功删除了 ${result.deletedCount} 个项目`, 'success');
-                keysToDelete.forEach(key => {
-                    const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
-                    if (directoryCache[parentPrefix]) {
-                        delete directoryCache[parentPrefix];
-                    }
-                });
-                if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
-                selectedItems.clear();
-                fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
-                    if (isSelectionMode) toggleSelectionMode();
-                });
+    const performBatchDelete = async (adminPass) => {
+        const password = getAuthPassword();
+        if (!password) {
+            throw new Error("无法删除：未获取到验证口令。请重新验证。");
+        }
+        const response = await fetch(`${FILES_API_URL}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({
+                keys: keysToDelete,
+                adminPassword: adminPass
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || '批量删除失败，请检查管理员密码或稍后重试');
+        }
+        showNotification(`成功删除了 ${keysToDelete.length} 个项目`, 'success');
+        keysToDelete.forEach(key => {
+            const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+            if (directoryCache[parentPrefix]) {
+                delete directoryCache[parentPrefix];
             }
         });
+        if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+        selectedItems.clear();
+        fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
+            if (isSelectionMode) toggleSelectionMode();
+        });
+    };
+    try {
+        const adminPassword = getAdminPassword();
+        if (adminPassword) {
+            if (confirm(`你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！`)) {
+                await performBatchDelete(adminPassword);
+            } else {
+                showNotification('批量删除操作已取消', 'info');
+            }
+        } else {
+            await createAuthModal({
+                title: '确认批量删除',
+                subtitle: `你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！ (提示: 可在右上角进行全局管理员验证以简化操作)`,
+                placeholder: '请输入管理员密码以确认删除',
+                buttonText: '确认删除',
+                iconClass: 'fa-exclamation-triangle',
+                action: performBatchDelete
+            });
+        }
     } catch (error) {
         if (error.message !== '用户取消验证') {
             showNotification(`批量删除操作失败: ${error.message}`, 'error');
@@ -1336,6 +1363,23 @@ style.textContent = `
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
     }
+   .rename-button {
+       background: transparent;
+       border: 1px solid var(--primary-color);
+       color: var(--primary-color);
+       padding: 0.4rem 0.8rem;
+       border-radius: 8px;
+       cursor: pointer;
+       transition: all 0.2s ease;
+       font-size: 0.8rem;
+       margin-right: 0.5rem;
+   }
+   .rename-button:hover {
+       background: var(--primary-color);
+       color: white;
+       transform: translateY(-1px);
+       box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+   }
     .notification {
         animation: slideInRight 0.3s ease;
     }
@@ -1351,6 +1395,60 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+async function renameFile(key, currentName, isDirectory) {
+    const newName = prompt(`为 "${currentName}" 输入新名称:`, currentName);
+    if (!newName || newName === currentName) {
+        return;
+    }
+    const performRename = async (adminPass) => {
+        const password = getAuthPassword();
+        if (!password) {
+            throw new Error("需要进行验证。");
+        }
+        const response = await fetch(`${FILES_API_URL}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({
+                key: key,
+                newName: newName,
+                adminPassword: adminPass
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || '重命名失败，请检查管理员密码或稍后重试。');
+        }
+        showNotification(`成功重命名为 "${newName}"`, 'success');
+        if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+        const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+        if (directoryCache[parentPrefix]) delete directoryCache[parentPrefix];
+        fetchAndDisplayFiles(currentPrefix, '', currentPage);
+    };
+    try {
+        const adminPassword = getAdminPassword();
+        if (adminPassword) {
+            await performRename(adminPassword);
+        } else {
+            await createAuthModal({
+                title: '确认重命名',
+                subtitle: `确定要将 "${currentName}" 重命名为 "${newName}" 吗？ (提示: 可在右上角进行全局管理员验证以简化操作)`,
+                placeholder: '请输入管理员密码以确认',
+                buttonText: '确认重命名',
+                iconClass: 'fa-pencil-alt',
+                action: performRename
+            });
+        }
+    } catch (error) {
+        if (error.message !== '用户取消验证') {
+            showNotification(`重命名操作失败: ${error.message}`, 'error');
+        } else {
+            showNotification('重命名操作已取消', 'info');
+        }
+    }
+}
 const paginationStyle = document.createElement('style');
 paginationStyle.textContent = `
     .pagination-controls {

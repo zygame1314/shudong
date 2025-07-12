@@ -73,7 +73,7 @@ export async function onRequestGet({ request, env }) {
       const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
       const { total: totalItems } = await countStmt.bind(searchCondition).first();
       const totalPages = Math.ceil(totalItems / limit);
-      const searchStmt = DB.prepare('SELECT key, name, size, uploaded, is_directory, parent_path FROM files WHERE name LIKE ? ORDER BY is_directory DESC, name ASC LIMIT ? OFFSET ?');
+      const searchStmt = DB.prepare('SELECT key, name, size, uploaded, is_directory, parent_path, downloads FROM files WHERE name LIKE ? ORDER BY is_directory DESC, name ASC LIMIT ? OFFSET ?');
       const { results: filesResults } = await searchStmt.bind(searchCondition, limit, offset).all();
       const responseItems = filesResults.map(f => ({
         key: f.key,
@@ -82,6 +82,7 @@ export async function onRequestGet({ request, env }) {
         uploaded: f.uploaded,
         isDirectory: !!f.is_directory,
         parent_path: f.parent_path,
+        downloads: f.downloads || 0,
         isSearchResult: true
       }));
       return new Response(JSON.stringify({
@@ -100,7 +101,7 @@ export async function onRequestGet({ request, env }) {
     } else {
       console.log(`Listing files for prefix: "${prefix}", page: ${page}, limit: ${limit}`);
       const filesStmt = DB.prepare(
-        'SELECT key, name, size, uploaded, contentType, is_directory FROM files WHERE parent_path = ? AND is_directory = FALSE ORDER BY name ASC'
+        'SELECT key, name, size, uploaded, contentType, is_directory, downloads FROM files WHERE parent_path = ? AND is_directory = FALSE ORDER BY name ASC'
       );
       const { results: filesFromDb } = await filesStmt.bind(prefix).all();
       const fileList = filesFromDb.map(f => ({
@@ -109,7 +110,8 @@ export async function onRequestGet({ request, env }) {
         size: f.size,
         uploaded: f.uploaded,
         contentType: f.contentType,
-        isDirectory: f.is_directory
+        isDirectory: f.is_directory,
+        downloads: f.downloads || 0
       }));
       const dirsStmt = DB.prepare(
         'SELECT key, name, size, uploaded, contentType, is_directory FROM files WHERE parent_path = ? AND is_directory = TRUE ORDER BY name ASC'
@@ -257,6 +259,106 @@ export async function onRequestDelete({ request, env, waitUntil }) {
     });
   }
 }
+export async function onRequestPut({ request, env }) {
+  if (!verifyPassword(request, env)) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  let payload;
+  try {
+    payload = await request.json();
+  } catch (e) {
+    return new Response(JSON.stringify({ success: false, error: 'Invalid request body' }), {
+      status: 400,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const { key, newName, adminPassword } = payload;
+  if (!key || !newName || !adminPassword) {
+    return new Response(JSON.stringify({ success: false, error: 'Missing key, newName, or admin password' }), {
+      status: 400,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const correctAdminPassword = env.ADMIN_PASSWORD;
+  if (!correctAdminPassword) {
+    console.error("Server config error: ADMIN_PASSWORD not set.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (Admin).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  if (adminPassword !== correctAdminPassword) {
+    return new Response(JSON.stringify({ success: false, error: 'Invalid admin password' }), {
+      status: 403,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const R2_BUCKET = env.R2_bucket;
+  const DB = env.DB;
+  if (!R2_BUCKET || !DB) {
+    console.error("Server config error: R2 or D1 binding not found.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 or D1 binding).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  try {
+    const fileStmt = DB.prepare('SELECT * FROM files WHERE key = ?');
+    const fileToRename = await fileStmt.bind(key).first();
+    if (!fileToRename) {
+      return new Response(JSON.stringify({ success: false, error: 'Item not found in database' }), { status: 404, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+    }
+    const isDirectory = fileToRename.is_directory;
+    const parentPath = fileToRename.parent_path;
+    const newKey = `${parentPath}${newName}${isDirectory ? '/' : ''}`;
+    if (isDirectory) {
+      const listStmt = DB.prepare('SELECT * FROM files WHERE key LIKE ?');
+      const { results: itemsToRename } = await listStmt.bind(`${key}%`).all();
+      const r2ObjectsToCopy = [];
+      const dbUpdates = [];
+      for (const item of itemsToRename) {
+        const newSubKey = item.key.replace(key, newKey);
+        r2ObjectsToCopy.push({ source: item.key, destination: newSubKey });
+        const newSubParentPath = item.parent_path.replace(key, newKey);
+        const newSubName = newSubKey.endsWith('/') ? newSubKey.slice(0, -1).split('/').pop() : newSubKey.split('/').pop();
+        dbUpdates.push(DB.prepare('UPDATE files SET key = ?, name = ?, parent_path = ? WHERE key = ?').bind(newSubKey, newSubName, newSubParentPath, item.key));
+      }
+      for (const { source, destination } of r2ObjectsToCopy) {
+        const head = await R2_BUCKET.head(source);
+        if (head) {
+          await R2_BUCKET.copy(source, destination, { httpMetadata: head.httpMetadata });
+        }
+      }
+      await DB.batch(dbUpdates);
+      const keysToDelete = r2ObjectsToCopy.map(o => o.source);
+      if (keysToDelete.length > 0) {
+        await R2_BUCKET.delete(keysToDelete);
+      }
+    } else {
+      const head = await R2_BUCKET.head(key);
+      if (head === null) {
+        return new Response(JSON.stringify({ success: false, error: 'File not found in R2' }), { status: 404, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+      }
+      await R2_BUCKET.copy(key, newKey, { httpMetadata: head.httpMetadata });
+      await R2_BUCKET.delete(key);
+      const stmt = DB.prepare('UPDATE files SET key = ?, name = ? WHERE key = ?');
+      await stmt.bind(newKey, newName, key).run();
+    }
+    return new Response(JSON.stringify({ success: true, message: `Item renamed to ${newName}` }), {
+      status: 200,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  } catch (error) {
+    console.error(`Error renaming item:`, error);
+    return new Response(JSON.stringify({ success: false, error: 'Failed to rename item.' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+}
 export async function onRequest(context) {
   if (context.request.method === 'OPTIONS') {
     return new Response(null, {
@@ -270,8 +372,11 @@ export async function onRequest(context) {
   if (context.request.method === 'DELETE') {
     return onRequestDelete(context);
   }
+  if (context.request.method === 'PUT') {
+    return onRequestPut(context);
+  }
   return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
     status: 405,
-    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, DELETE, OPTIONS' }),
+    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, DELETE, PUT, OPTIONS' }),
   });
 }

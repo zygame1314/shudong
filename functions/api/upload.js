@@ -28,7 +28,7 @@ async function ensureDirectoryExists(db, fullPath, env) {
       const existingDir = await checkStmt.bind(currentPath).first();
       if (!existingDir) {
         const insertDirStmt = db.prepare(
-          'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory, downloads) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
         await insertDirStmt.bind(
           currentPath,
@@ -37,7 +37,8 @@ async function ensureDirectoryExists(db, fullPath, env) {
           new Date().toISOString(),
           'inode/directory',
           parentPathForCurrentDir,
-          true
+          true,
+          0
         ).run();
         console.log(`Created directory entry in D1: ${currentPath}`);
       }
@@ -112,12 +113,12 @@ export async function onRequestPost({ request, env, waitUntil }) {
         try {
           await ensureDirectoryExists(DB, filename, env);
           const stmt = DB.prepare(
-            'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO files (key, name, size, uploaded, contentType, parent_path, is_directory, downloads) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
           );
           const parts = filename.split('/');
           const name = parts.pop();
           const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
-          await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false).run();
+          await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false, 0).run();
           console.log(`Successfully inserted file metadata for ${filename} into D1.`);
         } catch (dbError) {
           console.error(`Error during background database operations for ${filename}:`, dbError);
