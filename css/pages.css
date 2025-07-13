@@ -328,6 +328,7 @@
 .file-icon {
     width: 40px;
     height: 40px;
+    flex-shrink: 0;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -647,6 +648,7 @@
 }
 
 .selection-actions .primary-btn,
+.selection-actions .secondary-btn,
 .selection-actions .danger-btn {
     padding: 0.6rem 1.2rem;
     font-size: 0.9rem;

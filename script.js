@@ -35,11 +35,11 @@ async function fetchAndRenderHotFolders() {
                 hotFoldersListElement.innerHTML = '<p class="empty-state-small">暂无热门文件夹。</p>';
                 return;
             }
-            
+
             hotFoldersListElement.innerHTML = '';
             const ul = document.createElement('ul');
             ul.className = 'hot-folders-list';
-            
+
             result.hotFolders.forEach(folder => {
                 const li = document.createElement('li');
                 li.className = 'hot-folder-item';
@@ -57,7 +57,7 @@ async function fetchAndRenderHotFolders() {
                     const folderLinks = document.querySelectorAll('.folder-tree-item');
                     folderLinks.forEach(link => {
                         link.classList.remove('active');
-                        if(link.querySelector('.folder-name').textContent === folder.name) {
+                        if (link.querySelector('.folder-name').textContent === folder.name) {
                             link.classList.add('active');
                         }
                     });
@@ -80,7 +80,7 @@ async function fetchAndBuildFolderTree() {
     const password = getAuthPassword();
     if (!password || !folderTreeElement) return;
 
-    folderTreeElement.innerHTML = '&lt;div class="loading-spinner" style="margin: 20px auto;"&gt;&lt;/div&gt;';
+    folderTreeElement.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
 
     try {
         const response = await fetch(`${FILES_API_URL}?action=listAllDirs`, {
@@ -92,11 +92,11 @@ async function fetchAndBuildFolderTree() {
             const tree = buildTree(result.directories);
             renderFolderTree(tree, folderTreeElement);
         } else {
-            folderTreeElement.innerHTML = '&lt;p style="color: var(--text-secondary); font-size: 0.9rem;"&gt;无法加载文件夹树。&lt;/p&gt;';
+            folderTreeElement.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9rem;">无法加载文件夹树。</p>';
             console.error('获取文件夹树失败:', result.error);
         }
     } catch (error) {
-        folderTreeElement.innerHTML = '&lt;p style="color: var(--text-secondary); font-size: 0.9rem;"&gt;加载文件夹树时出错。&lt;/p&gt;';
+        folderTreeElement.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9rem;">加载文件夹树时出错。</p>';
         console.error('请求文件夹树出错:', error);
     }
 }
@@ -139,13 +139,17 @@ function renderFolderNode(name, node, currentPath) {
     const nodeContent = document.createElement('div');
     nodeContent.className = 'folder-tree-item';
     nodeContent.innerHTML = `
-        <i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"></i>
-        <i class="fas fa-folder folder-icon"></i>
-        <span class="folder-name">${name}</span>
+        <span class="folder-item-main">
+            <i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"></i>
+            <i class="fas fa-folder folder-icon"></i>
+            <span class="folder-name">${name}</span>
+        </span>
+        <button class="go-to-folder-btn" title="进入文件夹">
+            <i class="fas fa-arrow-right"></i>
+        </button>
     `;
 
-    nodeContent.addEventListener('click', (e) => {
-        e.stopPropagation();
+    nodeContent.addEventListener('click', () => {
         if (hasChildren) {
             const sublist = li.querySelector('.folder-tree-list');
             if (sublist) {
@@ -153,8 +157,12 @@ function renderFolderNode(name, node, currentPath) {
                 li.querySelector('.folder-toggle-icon').classList.toggle('expanded');
             }
         }
-        fetchAndDisplayFiles(fullPath);
+    });
 
+    const goToBtn = nodeContent.querySelector('.go-to-folder-btn');
+    goToBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fetchAndDisplayFiles(fullPath);
         document.querySelectorAll('.folder-tree-item.active').forEach(item => item.classList.remove('active'));
         nodeContent.classList.add('active');
     });
@@ -900,10 +908,13 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
                 下载
             </button>
         ` : ''}
-        <button class="rename-button">
-           <i class="fas fa-pencil-alt"></i>
+        <button class="rename-button" title="重命名">
+          <i class="fas fa-pencil-alt"></i>
         </button>
-        <button class="delete-button">
+        <button class="move-button" title="移动到...">
+           <i class="fas fa-folder-tree"></i>
+        </button>
+        <button class="delete-button" title="删除">
             <i class="fas fa-trash"></i>
         </button>
     `;
@@ -927,6 +938,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     const renameBtn = fileActionsDiv.querySelector('.rename-button');
     if (renameBtn) {
         renameBtn.onclick = () => renameFile(item.key, item.name, isDirectory);
+    }
+    const moveBtn = fileActionsDiv.querySelector('.move-button');
+    if (moveBtn) {
+        moveBtn.onclick = () => moveItem(item.key, item.name, isDirectory);
     }
     if (isDirectory) {
         fileItemDiv.style.cursor = 'pointer';
@@ -1005,8 +1020,12 @@ function updateSelectionToolbar() {
     if (isSelectionMode && selectedCount > 0) {
         toolbar.classList.add('visible');
         countSpan.textContent = `已选择 ${selectedCount} 项`;
+        const batchMoveBtn = document.getElementById('batch-move-btn');
+        if (batchMoveBtn) batchMoveBtn.style.display = 'inline-flex';
     } else {
         toolbar.classList.remove('visible');
+        const batchMoveBtn = document.getElementById('batch-move-btn');
+        if (batchMoveBtn) batchMoveBtn.style.display = 'none';
     }
     updateSelectAllButtonState();
 }
@@ -1211,6 +1230,95 @@ async function handleBatchDownload() {
     } finally {
         downloadBtn.disabled = false;
         downloadBtn.innerHTML = '<i class="fas fa-download"></i> 批量下载';
+    }
+}
+async function handleBatchMove() {
+    const keysToMove = Array.from(selectedItems);
+    if (keysToMove.length === 0) {
+        showNotification('没有选择任何项目', 'info');
+        return;
+    }
+
+    let destinationPath;
+    try {
+        destinationPath = await showDirectoryPicker(keysToMove);
+    } catch (error) {
+        showNotification('移动操作已取消', 'info');
+        return;
+    }
+
+    const performBatchMove = async (adminPass) => {
+        const password = getAuthPassword();
+        if (!password) {
+            throw new Error("无法移动：未获取到验证口令。请重新验证。");
+        }
+
+        let successCount = 0;
+        let errorCount = 0;
+        const errors = [];
+
+        for (const key of keysToMove) {
+            try {
+                const response = await fetch(`${FILES_API_URL}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${password}`,
+                    },
+                    body: JSON.stringify({
+                        sourceKey: key,
+                        destinationPath: destinationPath,
+                        adminPassword: adminPass
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    errorCount++;
+                    errors.push(`- ${key.split('/').pop()}: ${result.error || '未知错误'}`);
+                } else {
+                    successCount++;
+                }
+            } catch (e) {
+                errorCount++;
+                errors.push(`- ${key.split('/').pop()}: ${e.message}`);
+            }
+        }
+
+        if (errorCount > 0) {
+            const errorMessage = `移动完成，${successCount}个成功, ${errorCount}个失败。<br>${errors.join('<br>')}`;
+            showNotification(errorMessage, 'error');
+        } else {
+            showNotification(`成功移动了 ${successCount} 个项目`, 'success');
+        }
+
+        if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+        if (directoryCache[destinationPath]) delete directoryCache[destinationPath];
+        selectedItems.clear();
+        fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
+            if (isSelectionMode) toggleSelectionMode();
+        });
+    };
+
+    try {
+        const adminPassword = getAdminPassword();
+        if (adminPassword) {
+            await performBatchMove(adminPassword);
+        } else {
+            await createAuthModal({
+                title: '管理员验证',
+                subtitle: `请输入管理员密码以移动 ${keysToMove.length} 个项目到 "${destinationPath || '根目录'}"`,
+                placeholder: '请输入管理员密码',
+                buttonText: '确认移动',
+                iconClass: 'fa-folder-tree',
+                action: performBatchMove
+            });
+        }
+    } catch (error) {
+        if (error.message !== '用户取消验证' && error.message !== 'User cancelled') {
+            showNotification(`批量移动操作失败: ${error.message}`, 'error');
+        } else {
+            showNotification('批量移动操作已取消', 'info');
+        }
     }
 }
 function renderFileList(prefix, data, isGlobalSearch = false, localSearchTerm = '', paginationData = null) {
@@ -1520,6 +1628,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (batchDownloadBtn) {
         batchDownloadBtn.addEventListener('click', handleBatchDownload);
     }
+    const batchMoveBtn = document.getElementById('batch-move-btn');
+    if (batchMoveBtn) {
+        batchMoveBtn.addEventListener('click', handleBatchMove);
+    }
     const selectAllBtn = document.getElementById('select-all-btn');
     if (selectAllBtn) {
         selectAllBtn.addEventListener('click', handleSelectAll);
@@ -1570,6 +1682,51 @@ document.addEventListener('DOMContentLoaded', () => {
         previewModal.addEventListener('click', (e) => {
             if (e.target === previewModal) {
                 closeAndCleanup();
+            }
+        });
+    }
+
+    const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
+    const sidebar = document.getElementById('folder-tree-container');
+
+    if (mobileSidebarToggle && sidebar) {
+        const overlay = document.createElement('div');
+        overlay.className = 'mobile-sidebar-overlay';
+        document.body.appendChild(overlay);
+
+        const setIcon = (isOpen) => {
+            const icon = mobileSidebarToggle.querySelector('i');
+            if (icon) {
+                icon.classList.toggle('fa-times', isOpen);
+                icon.classList.toggle('fa-bars', !isOpen);
+            }
+        };
+
+        const closeSidebar = () => {
+            document.body.classList.remove('mobile-sidebar-visible');
+            setIcon(false);
+        };
+
+        const toggleSidebar = () => {
+            const isOpen = document.body.classList.contains('mobile-sidebar-visible');
+            if (isOpen) {
+                closeSidebar();
+            } else {
+                document.body.classList.add('mobile-sidebar-visible');
+                setIcon(true);
+            }
+        };
+
+        mobileSidebarToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSidebar();
+        });
+
+        overlay.addEventListener('click', closeSidebar);
+
+        sidebar.addEventListener('click', (e) => {
+            if (e.target.closest('.go-to-folder-btn') || e.target.closest('.hot-folder-item')) {
+                closeSidebar();
             }
         });
     }
@@ -1656,6 +1813,23 @@ style.textContent = `
        color: white;
        transform: translateY(-1px);
        box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+   }
+   .move-button {
+      background: transparent;
+      border: 1px solid var(--secondary-color);
+      color: var(--secondary-color);
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.8rem;
+      margin-right: 0.5rem;
+   }
+   .move-button:hover {
+      background: var(--secondary-color);
+      color: white;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(243, 156, 18, 0.3);
    }
     .notification {
         animation: slideInRight 0.3s ease;
@@ -1771,6 +1945,66 @@ style.textContent = `
     @keyframes slideDown { from { transform: translateY(0); opacity: 1; } to { transform: translateY(20px); opacity: 0; } }
 `;
 document.head.appendChild(style);
+async function moveItem(key, currentName, isDirectory) {
+    let destinationPath;
+    try {
+        destinationPath = await showDirectoryPicker([key]);
+    } catch (error) {
+        showNotification('移动操作已取消', 'info');
+        return;
+    }
+
+    const performMove = async (adminPass) => {
+        const password = getAuthPassword();
+        if (!password) {
+            throw new Error("需要进行验证。");
+        }
+        const response = await fetch(`${FILES_API_URL}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${password}`,
+            },
+            body: JSON.stringify({
+                sourceKey: key,
+                destinationPath: destinationPath,
+                adminPassword: adminPass
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || '移动失败，请检查管理员密码或目标路径。');
+        }
+        showNotification(`成功将 "${currentName}" 移动到 "${destinationPath || '根目录'}"`, 'success');
+        if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
+        const parentPrefix = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+        if (directoryCache[parentPrefix]) delete directoryCache[parentPrefix];
+        if (directoryCache[destinationPath]) delete directoryCache[destinationPath];
+        fetchAndDisplayFiles(currentPrefix, '', currentPage);
+    };
+
+    try {
+        const adminPassword = getAdminPassword();
+        if (adminPassword) {
+            await performMove(adminPassword);
+        } else {
+            await createAuthModal({
+                title: '确认移动',
+                subtitle: `确定要将 "${currentName}" 移动到 "${destinationPath || '根目录'}" 吗？`,
+                placeholder: '请输入管理员密码以确认',
+                buttonText: '确认移动',
+                iconClass: 'fa-folder-tree',
+                action: performMove
+            });
+        }
+    } catch (error) {
+        if (error.message !== '用户取消验证') {
+            showNotification(`移动操作失败: ${error.message}`, 'error');
+        } else {
+            showNotification('移动操作已取消', 'info');
+        }
+    }
+}
 async function renameFile(key, currentName, isDirectory) {
     let newName;
     try {
@@ -1837,8 +2071,273 @@ async function renameFile(key, currentName, isDirectory) {
         }
     }
 }
+function showDirectoryPicker(itemsToMove = []) {
+    return new Promise(async (resolve, reject) => {
+        const password = getAuthPassword();
+        if (!password) {
+            return reject(new Error("需要验证"));
+        }
+
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'confirmation-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="confirmation-modal directory-picker-modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">选择目标文件夹</h3>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <p class="modal-subtitle">将 ${itemsToMove.length} 个项目移动到:</p>
+                <div id="directory-picker-tree" class="directory-picker-tree">
+                    <div class="loading-spinner"></div>
+                </div>
+                <div class="confirmation-buttons">
+                    <button class="confirm-btn-cancel">取消</button>
+                    <button class="confirm-btn" disabled>移动到这里</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalOverlay);
+
+        const treeContainer = modalOverlay.querySelector('#directory-picker-tree');
+        const confirmBtn = modalOverlay.querySelector('.confirm-btn');
+        let selectedPath = null;
+
+        const renderTree = (tree, container) => {
+            const ul = document.createElement('ul');
+            ul.className = 'folder-tree-list';
+
+            const rootNode = renderNode('根目录', tree, '', true, true);
+            ul.appendChild(rootNode);
+
+            container.innerHTML = '';
+            container.appendChild(ul);
+        };
+
+        const renderNode = (name, node, path, isRoot = false, isLast = false) => {
+            const li = document.createElement('li');
+            li.className = 'folder-tree-node';
+            if (isLast) {
+                li.classList.add('is-last');
+            }
+
+            const fullPath = isRoot ? '' : `${path}${name}/`;
+            const children = isRoot ? node : node;
+            const hasChildren = Object.keys(children).length > 0;
+
+            const nodeContent = document.createElement('div');
+            nodeContent.className = 'folder-tree-item';
+            nodeContent.dataset.path = fullPath;
+            nodeContent.innerHTML = `
+                <i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"></i>
+                <i class="fas fa-folder folder-icon"></i>
+                <span class="folder-name">${name}</span>
+            `;
+            li.appendChild(nodeContent);
+
+            if (hasChildren) {
+                const sublist = document.createElement('ul');
+                sublist.className = 'folder-tree-list';
+                sublist.style.display = isRoot ? 'block' : 'none';
+
+                const childKeys = Object.keys(children).sort();
+                childKeys.forEach((key, index) => {
+                    const isLastInSublist = index === childKeys.length - 1;
+                    sublist.appendChild(renderNode(key, children[key], fullPath, false, isLastInSublist));
+                });
+                li.appendChild(sublist);
+            }
+            return li;
+        };
+
+        treeContainer.addEventListener('click', (e) => {
+            const itemTarget = e.target.closest('.folder-tree-item');
+            if (!itemTarget) return;
+
+            const liNode = itemTarget.parentElement;
+            const sublist = liNode.querySelector('.folder-tree-list');
+
+            if (e.target.closest('.folder-toggle-icon') && sublist) {
+                e.stopPropagation();
+                const isExpanded = sublist.style.display === 'block';
+                sublist.style.display = isExpanded ? 'none' : 'block';
+                itemTarget.querySelector('.folder-toggle-icon').classList.toggle('expanded', !isExpanded);
+            } else {
+                const path = itemTarget.dataset.path;
+                const isInvalidMove = itemsToMove.some(itemKey => path.startsWith(itemKey + '/'));
+
+                if (isInvalidMove) {
+                    showNotification('不能将文件夹移动到其自身或其子文件夹中。', 'error');
+                    return;
+                }
+
+                if (selectedPath !== null) {
+                    const prevSelected = treeContainer.querySelector(`.folder-tree-item.active`);
+                    if (prevSelected) prevSelected.classList.remove('active');
+                }
+                itemTarget.classList.add('active');
+                selectedPath = path;
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = `移动到 "${itemTarget.querySelector('.folder-name').textContent}"`;
+            }
+        });
+
+        const closeModal = (value) => {
+            modalOverlay.classList.add('closing');
+            modalOverlay.addEventListener('animationend', () => {
+                if (modalOverlay.parentNode) document.body.removeChild(modalOverlay);
+                if (value !== null) resolve(value);
+                else reject(new Error('User cancelled'));
+            }, { once: true });
+        };
+
+        confirmBtn.addEventListener('click', () => closeModal(selectedPath));
+        modalOverlay.querySelector('.confirm-btn-cancel').addEventListener('click', () => closeModal(null));
+        modalOverlay.querySelector('.close-btn').addEventListener('click', () => closeModal(null));
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) closeModal(null);
+        });
+
+        try {
+            const response = await fetch(`${FILES_API_URL}?action=listAllDirs`, {
+                headers: { 'Authorization': `Bearer ${password}` }
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                const tree = buildTree(result.directories);
+                renderTree(tree, treeContainer);
+            } else {
+                throw new Error(result.error || '无法加载文件夹列表');
+            }
+        } catch (error) {
+            treeContainer.innerHTML = `<p style="color: var(--text-secondary);">${error.message}</p>`;
+        }
+    });
+}
 const paginationStyle = document.createElement('style');
 paginationStyle.textContent = `
+   .directory-picker-modal {
+       max-width: 480px;
+       text-align: left;
+   }
+   .directory-picker-modal .modal-header {
+       display: flex;
+       justify-content: space-between;
+       align-items: center;
+       margin-bottom: 0.5rem;
+   }
+   .directory-picker-modal .modal-title {
+       margin: 0;
+       font-size: 1.25rem;
+       color: var(--text-primary);
+   }
+   .directory-picker-modal .modal-subtitle {
+       margin: 0 0 1rem 0;
+       color: var(--text-secondary);
+   }
+   .directory-picker-modal .close-btn {
+       background: none;
+       border: none;
+       font-size: 1.5rem;
+       color: var(--text-secondary);
+       cursor: pointer;
+   }
+   .directory-picker-tree {
+       max-height: 50vh;
+       overflow-y: auto;
+       border: 1px solid var(--border-color);
+       border-radius: 12px;
+       padding: 0.75rem;
+       background-color: var(--background-alt);
+       margin-bottom: 1.5rem;
+   }
+   .directory-picker-tree .folder-tree-list {
+       list-style: none;
+       margin: 0;
+       padding-left: 20px;
+       position: relative;
+   }
+   .directory-picker-tree .folder-tree-list::before {
+       content: '';
+       position: absolute;
+       left: 8px;
+       top: 0;
+       bottom: 0;
+       width: 1px;
+       background: var(--border-color);
+   }
+   .directory-picker-tree .folder-tree-node {
+       margin: 0;
+       padding: 0;
+       position: relative;
+   }
+   .directory-picker-tree .folder-tree-node::before {
+       content: '';
+       position: absolute;
+       left: -12px;
+       top: 20px;
+       width: 12px;
+       height: 1px;
+       background: var(--border-color);
+   }
+   .directory-picker-tree .folder-tree-node.is-last::before {
+       height: 1px;
+   }
+   .directory-picker-tree .folder-tree-node.is-last::after {
+       content: '';
+       position: absolute;
+       left: -20px;
+       top: 21px;
+       bottom: 0;
+       width: 1px;
+       background: var(--background-alt);
+   }
+   #directory-picker-tree > .folder-tree-list {
+       padding-left: 0;
+   }
+   #directory-picker-tree > .folder-tree-list::before {
+       display: none;
+   }
+   #directory-picker-tree > .folder-tree-list > .folder-tree-node::before,
+   #directory-picker-tree > .folder-tree-list > .folder-tree-node::after {
+       display: none;
+   }
+   .directory-picker-tree .folder-tree-item {
+       display: flex;
+       align-items: center;
+       padding: 0.5rem 0.8rem;
+       cursor: pointer;
+       border-radius: 8px;
+       transition: background-color 0.2s ease, color 0.2s ease;
+       gap: 0.75rem;
+       margin-top: 4px;
+       margin-bottom: 4px;
+       justify-content: flex-start;
+   }
+   .directory-picker-tree .folder-tree-item:hover {
+       background-color: var(--background-hover);
+   }
+   .directory-picker-tree .folder-tree-item.active {
+       background: var(--primary-gradient);
+       color: white;
+       box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);
+   }
+   .directory-picker-tree .folder-icon {
+       color: var(--primary-color);
+   }
+   .directory-picker-tree .folder-tree-item.active .folder-icon {
+       color: white;
+   }
+   .directory-picker-tree .folder-toggle-icon {
+       transition: transform 0.2s ease;
+       font-size: 0.8em;
+       color: var(--text-secondary);
+   }
+   .directory-picker-tree .folder-toggle-icon.expanded {
+       transform: rotate(90deg);
+   }
+   .directory-picker-tree .folder-toggle-icon.hidden {
+       visibility: hidden;
+   }
     .pagination-controls {
         display: flex;
         justify-content: center;

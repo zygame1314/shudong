@@ -1,7 +1,7 @@
 .top-nav {
     position: sticky;
     top: 0;
-    z-index: 1000;
+    z-index: 1003;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border-color);
@@ -81,7 +81,6 @@
 }
 
 .folder-tree-container {
-    width: 400px;
     flex-shrink: 0;
     background: var(--background-secondary);
     padding: 1.5rem;
@@ -301,10 +300,11 @@
 .folder-tree-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 8px 12px;
     border-radius: var(--border-radius-medium);
     cursor: pointer;
-    transition: background-color var(--transition-fast), color var(--transition-fast);
+    transition: background-color var(--transition-fast);
     user-select: none;
 }
 
@@ -313,14 +313,16 @@
 }
 
 .folder-tree-item.active {
-    background-color: var(--primary-color);
-    color: white;
-    font-weight: 500;
+    background-color: var(--background-alt);
 }
 
-.folder-tree-item.active .folder-icon,
-.folder-tree-item.active .folder-toggle-icon {
-    color: white !important;
+.folder-tree-item.active .folder-item-main .folder-name {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.folder-tree-item.active .folder-item-main .folder-icon {
+    color: var(--primary-color);
 }
 
 .folder-toggle-icon {
@@ -350,6 +352,39 @@
     text-overflow: ellipsis;
     font-size: 0.95rem;
 }
+.folder-item-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.go-to-folder-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    transition: background-color 0.2s, color 0.2s;
+    flex-shrink: 0;
+    margin-left: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+}
+
+.go-to-folder-btn:hover {
+    background-color: var(--background-hover);
+    color: var(--primary-color);
+}
+
+.folder-tree-item.active .go-to-folder-btn {
+    color: var(--primary-color);
+}
 
 .sidebar-divider {
     height: 1px;
@@ -372,6 +407,7 @@
 
 .hot-folder-item {
     display: flex;
+    gap: 12px;
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
@@ -414,4 +450,54 @@
     color: var(--text-secondary);
     text-align: center;
     padding: 1rem 0;
+}
+
+.logo-section .mobile-only-btn {
+    display: none;
+}
+
+.mobile-sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1001;
+    transition: opacity 0.3s ease;
+}
+
+@media (max-width: 1200px) {
+    .logo-section .mobile-only-btn {
+        display: inline-flex;
+    }
+
+    .explorer-container {
+        flex-direction: column;
+    }
+
+    .folder-tree-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        z-index: 1002;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+        background: var(--background);
+        border-radius: 0;
+        box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        overflow-y: auto;
+        padding-top: 4rem;
+    }
+
+    body.mobile-sidebar-visible .folder-tree-container {
+        transform: translateX(0);
+    }
+    
+    body.mobile-sidebar-visible .mobile-sidebar-overlay {
+        display: block;
+        opacity: 1;
+    }
 }

@@ -414,6 +414,124 @@ export async function onRequestPut({ request, env }) {
     });
   }
 }
+export async function onRequestPost({ request, env, waitUntil }) {
+  if (!verifyPassword(request, env)) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  let payload;
+  try {
+    payload = await request.json();
+  } catch (e) {
+    return new Response(JSON.stringify({ success: false, error: 'Invalid request body' }), {
+      status: 400,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const { sourceKey, destinationPath, adminPassword } = payload;
+  if (!sourceKey || destinationPath === undefined || !adminPassword) {
+    return new Response(JSON.stringify({ success: false, error: 'Missing sourceKey, destinationPath, or admin password' }), {
+      status: 400,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const correctAdminPassword = env.ADMIN_PASSWORD;
+  if (!correctAdminPassword) {
+    console.error("Server config error: ADMIN_PASSWORD not set.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (Admin).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  if (adminPassword !== correctAdminPassword) {
+    return new Response(JSON.stringify({ success: false, error: 'Invalid admin password' }), {
+      status: 403,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  const R2_BUCKET = env.R2_bucket;
+  const DB = env.DB;
+  if (!R2_BUCKET || !DB) {
+    console.error("Server config error: R2 or D1 binding not found.");
+    return new Response(JSON.stringify({ success: false, error: 'Server configuration error (R2 or D1 binding).' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+  try {
+    const fileStmt = DB.prepare('SELECT * FROM files WHERE key = ?');
+    const itemToMove = await fileStmt.bind(sourceKey).first();
+    if (!itemToMove) {
+      return new Response(JSON.stringify({ success: false, error: 'Item not found in database' }), { status: 404, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+    }
+    const isDirectory = itemToMove.is_directory;
+    const itemName = itemToMove.name;
+    const newBaseKey = `${destinationPath}${itemName}${isDirectory ? '/' : ''}`;
+    if (newBaseKey === sourceKey) {
+        return new Response(JSON.stringify({ success: false, error: 'Source and destination are the same.' }), { status: 400, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+    }
+    const destCheckStmt = DB.prepare('SELECT key FROM files WHERE key = ?');
+    const destExists = await destCheckStmt.bind(newBaseKey).first();
+    if (destExists) {
+      return new Response(JSON.stringify({ success: false, error: 'An item with the same name already exists in the destination.' }), { status: 409, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+    }
+    if (isDirectory) {
+      const listStmt = DB.prepare('SELECT * FROM files WHERE key LIKE ?');
+      const { results: itemsToMove } = await listStmt.bind(`${sourceKey}%`).all();
+      const dbUpdates = [];
+      const r2ObjectsToCopy = [];
+      for (const item of itemsToMove) {
+        const newSubKey = item.key.replace(sourceKey, newBaseKey);
+        r2ObjectsToCopy.push({ source: item.key, destination: newSubKey });
+        let newParentPath;
+        if (item.key === sourceKey) {
+          newParentPath = destinationPath;
+        } else {
+          newParentPath = item.parent_path.replace(sourceKey, newBaseKey);
+        }
+        dbUpdates.push(DB.prepare('UPDATE files SET key = ?, parent_path = ? WHERE key = ?').bind(newSubKey, newParentPath, item.key));
+      }
+      for (const { source, destination } of r2ObjectsToCopy) {
+        const head = await R2_BUCKET.head(source);
+        if (head) {
+          await R2_BUCKET.put(destination, null, {
+            copySource: source,
+            httpMetadata: head.httpMetadata
+          });
+        }
+      }
+      await DB.batch(dbUpdates);
+      const keysToDelete = r2ObjectsToCopy.map(o => o.source);
+      if (keysToDelete.length > 0) {
+        waitUntil(R2_BUCKET.delete(keysToDelete));
+      }
+    } else {
+      const head = await R2_BUCKET.head(sourceKey);
+      if (head === null) {
+        return new Response(JSON.stringify({ success: false, error: 'File not found in R2' }), { status: 404, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+      }
+      await R2_BUCKET.put(newBaseKey, null, {
+        copySource: sourceKey,
+        httpMetadata: head.httpMetadata
+      });
+      await R2_BUCKET.delete(sourceKey);
+      const stmt = DB.prepare('UPDATE files SET key = ?, parent_path = ? WHERE key = ?');
+      await stmt.bind(newBaseKey, destinationPath, sourceKey).run();
+    }
+    return new Response(JSON.stringify({ success: true, message: `Item successfully moved to ${destinationPath}` }), {
+      status: 200,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  } catch (error) {
+    console.error(`Error moving item:`, error);
+    return new Response(JSON.stringify({ success: false, error: 'Failed to move item.' }), {
+      status: 500,
+      headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+    });
+  }
+}
 export async function onRequest(context) {
   if (context.request.method === 'OPTIONS') {
     return new Response(null, {
@@ -430,8 +548,11 @@ export async function onRequest(context) {
   if (context.request.method === 'PUT') {
     return onRequestPut(context);
   }
+  if (context.request.method === 'POST') {
+    return onRequestPost(context);
+  }
   return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
     status: 405,
-    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, DELETE, PUT, OPTIONS' }),
+    headers: addCorsHeaders({ 'Content-Type': 'application/json', 'Allow': 'GET, POST, DELETE, PUT, OPTIONS' }),
   });
 }
