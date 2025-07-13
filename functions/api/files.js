@@ -61,6 +61,23 @@ export async function onRequestGet({ request, env }) {
       });
     }
   }
+  if (action === 'listAllDirs') {
+    try {
+      const stmt = DB.prepare("SELECT key FROM files WHERE is_directory = TRUE ORDER BY key ASC");
+      const { results } = await stmt.all();
+      const directories = results.map(row => row.key);
+      return new Response(JSON.stringify({ success: true, directories: directories }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    } catch (error) {
+      console.error('Error fetching all directories from D1:', error);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to fetch directory list.' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+  }
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
   const page = parseInt(url.searchParams.get('page')) || 1;

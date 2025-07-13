@@ -15,6 +15,106 @@ const closePreviewBtn = document.getElementById('close-preview');
 const API_BASE_URL = 'https://shudong.zygame1314.site';
 const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
+const folderTreeElement = document.getElementById('folder-tree');
+
+async function fetchAndBuildFolderTree() {
+    const password = getAuthPassword();
+    if (!password || !folderTreeElement) return;
+
+    folderTreeElement.innerHTML = '&lt;div class="loading-spinner" style="margin: 20px auto;"&gt;&lt;/div&gt;';
+
+    try {
+        const response = await fetch(`${FILES_API_URL}?action=listAllDirs`, {
+            headers: { 'Authorization': `Bearer ${password}` }
+        });
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            const tree = buildTree(result.directories);
+            renderFolderTree(tree, folderTreeElement);
+        } else {
+            folderTreeElement.innerHTML = '&lt;p style="color: var(--text-secondary); font-size: 0.9rem;"&gt;无法加载文件夹树。&lt;/p&gt;';
+            console.error('获取文件夹树失败:', result.error);
+        }
+    } catch (error) {
+        folderTreeElement.innerHTML = '&lt;p style="color: var(--text-secondary); font-size: 0.9rem;"&gt;加载文件夹树时出错。&lt;/p&gt;';
+        console.error('请求文件夹树出错:', error);
+    }
+}
+
+function buildTree(paths) {
+    const tree = {};
+    paths.forEach(path => {
+        let currentLevel = tree;
+        const parts = path.split('/').filter(p => p);
+        parts.forEach(part => {
+            if (!currentLevel[part]) {
+                currentLevel[part] = {};
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
+    return tree;
+}
+
+function renderFolderTree(tree, container) {
+    container.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'folder-tree-list';
+    
+    Object.keys(tree).sort().forEach(key => {
+        const node = tree[key];
+        const li = renderFolderNode(key, node, '');
+        ul.appendChild(li);
+    });
+    container.appendChild(ul);
+}
+
+function renderFolderNode(name, node, currentPath) {
+    const li = document.createElement('li');
+    li.className = 'folder-tree-node';
+
+    const fullPath = currentPath ? `${currentPath}${name}/` : `${name}/`;
+    const hasChildren = Object.keys(node).length > 0;
+
+    const nodeContent = document.createElement('div');
+    nodeContent.className = 'folder-tree-item';
+    nodeContent.innerHTML = `
+        &lt;i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"&gt;&lt;/i&gt;
+        &lt;i class="fas fa-folder folder-icon"&gt;&lt;/i&gt;
+        &lt;span class="folder-name"&gt;${name}&lt;/span&gt;
+    `;
+
+    nodeContent.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (hasChildren) {
+            const sublist = li.querySelector('.folder-tree-list');
+            if (sublist) {
+                sublist.style.display = sublist.style.display === 'none' ? 'block' : 'none';
+                li.querySelector('.folder-toggle-icon').classList.toggle('expanded');
+            }
+        }
+        fetchAndDisplayFiles(fullPath);
+        
+        document.querySelectorAll('.folder-tree-item.active').forEach(item => item.classList.remove('active'));
+        nodeContent.classList.add('active');
+    });
+
+    li.appendChild(nodeContent);
+
+    if (hasChildren) {
+        const sublist = document.createElement('ul');
+        sublist.className = 'folder-tree-list';
+        sublist.style.display = 'none';
+        Object.keys(node).sort().forEach(key => {
+            const childNode = renderFolderNode(key, node[key], fullPath);
+            sublist.appendChild(childNode);
+        });
+        li.appendChild(sublist);
+    }
+
+    return li;
+}
 let currentPrefix = '';
 let currentView = 'list';
 let currentFilter = 'all';
@@ -303,25 +403,31 @@ async function deleteFile(key, isDirectory) {
         fetchAndDisplayFiles(currentPrefix, '', currentPage);
     };
     try {
+        const confirmed = await showConfirmation({
+            title: '确认删除',
+            message: `你确定要永久删除 "${key}" 吗？<br><b>此操作不可逆！</b>`,
+            confirmText: '永久删除',
+            confirmClass: 'confirm-btn-danger'
+        });
+        if (!confirmed) {
+            showNotification('删除操作已取消', 'info');
+            return;
+        }
         const adminPassword = getAdminPassword();
         if (adminPassword) {
-            if (confirm(`你确定要永久删除 "${key}" 吗？此操作不可逆！`)) {
-                await performDelete(adminPassword);
-            } else {
-                showNotification('删除操作已取消', 'info');
-            }
+            await performDelete(adminPassword);
         } else {
             await createAuthModal({
-                title: '确认删除',
-                subtitle: `你确定要永久删除 "${key}" 吗？此操作不可逆！ (提示: 可在右上角进行全局管理员验证以简化操作)`,
-                placeholder: '请输入管理员密码以确认删除',
+                title: '管理员验证',
+                subtitle: `请输入管理员密码以确认删除 "${key}"`,
+                placeholder: '请输入管理员密码',
                 buttonText: '确认删除',
                 iconClass: 'fa-exclamation-triangle',
                 action: performDelete
             });
         }
     } catch (error) {
-        if (error.message !== '用户取消验证') {
+        if (error.message !== '用户取消验证' && error.message !== 'User cancelled') {
             showNotification(`删除操作失败: ${error.message}`, 'error');
         } else {
             showNotification('删除操作已取消', 'info');
@@ -478,6 +584,108 @@ async function previewFile(fileKey, fileName, fileSize) {
         previewModal.classList.remove('visible');
     }
 }
+function showConfirmation({
+    title,
+    message,
+    confirmText = '确认',
+    cancelText = '取消',
+    confirmClass = ''
+}) {
+    return new Promise((resolve) => {
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'confirmation-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="confirmation-modal">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="confirmation-buttons">
+                    <button class="confirm-btn-cancel">${cancelText}</button>
+                    <button class="confirm-btn ${confirmClass}">${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalOverlay);
+        const closeModal = (result) => {
+            modalOverlay.classList.add('closing');
+            modalOverlay.addEventListener('animationend', () => {
+                if (modalOverlay.parentNode) {
+                    document.body.removeChild(modalOverlay);
+                }
+                resolve(result);
+            }, {
+                once: true
+            });
+        };
+        modalOverlay.querySelector('.confirm-btn').addEventListener('click', () => closeModal(true));
+        modalOverlay.querySelector('.confirm-btn-cancel').addEventListener('click', () => closeModal(false));
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal(false);
+            }
+        });
+    });
+}
+
+function showPrompt({
+    title,
+    message,
+    initialValue = '',
+    placeholder = '',
+    confirmText = '确认',
+    cancelText = '取消'
+}) {
+    return new Promise((resolve, reject) => {
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'confirmation-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="confirmation-modal">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="prompt-input-container">
+                    <input type="text" id="prompt-input" placeholder="${placeholder}" value="${initialValue}">
+                </div>
+                <div class="confirmation-buttons">
+                    <button class="confirm-btn-cancel">${cancelText}</button>
+                    <button class="confirm-btn">${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalOverlay);
+        const input = modalOverlay.querySelector('#prompt-input');
+        input.focus();
+        input.select();
+        const closeModal = (value) => {
+            modalOverlay.classList.add('closing');
+            modalOverlay.addEventListener('animationend', () => {
+                if (modalOverlay.parentNode) {
+                    document.body.removeChild(modalOverlay);
+                }
+                if (value !== null) {
+                    resolve(value);
+                } else {
+                    reject(new Error('User cancelled'));
+                }
+            }, {
+                once: true
+            });
+        };
+        modalOverlay.querySelector('.confirm-btn').addEventListener('click', () => closeModal(input.value));
+        modalOverlay.querySelector('.confirm-btn-cancel').addEventListener('click', () => closeModal(null));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                closeModal(input.value);
+            } else if (e.key === 'Escape') {
+                closeModal(null);
+            }
+        });
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal(null);
+            }
+        });
+    });
+}
+
 function showNotification(message, type = 'info') {
     let container = document.getElementById('notification-container');
     if (!container) {
@@ -657,10 +865,10 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     if (deleteBtn) {
         deleteBtn.onclick = () => deleteFile(item.key, isDirectory);
     }
-   const renameBtn = fileActionsDiv.querySelector('.rename-button');
-   if (renameBtn) {
-       renameBtn.onclick = () => renameFile(item.key, item.name, isDirectory);
-   }
+    const renameBtn = fileActionsDiv.querySelector('.rename-button');
+    if (renameBtn) {
+        renameBtn.onclick = () => renameFile(item.key, item.name, isDirectory);
+    }
     if (isDirectory) {
         fileItemDiv.style.cursor = 'pointer';
         fileItemDiv.onclick = (e) => {
@@ -805,25 +1013,31 @@ async function handleBatchDelete() {
         });
     };
     try {
+        const confirmed = await showConfirmation({
+            title: '确认批量删除',
+            message: `你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？<br><b>此操作不可逆！</b>`,
+            confirmText: '永久删除',
+            confirmClass: 'confirm-btn-danger'
+        });
+        if (!confirmed) {
+            showNotification('批量删除操作已取消', 'info');
+            return;
+        }
         const adminPassword = getAdminPassword();
         if (adminPassword) {
-            if (confirm(`你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！`)) {
-                await performBatchDelete(adminPassword);
-            } else {
-                showNotification('批量删除操作已取消', 'info');
-            }
+            await performBatchDelete(adminPassword);
         } else {
             await createAuthModal({
-                title: '确认批量删除',
-                subtitle: `你确定要永久删除选中的 ${keysToDelete.length} 个项目吗？此操作不可逆！ (提示: 可在右上角进行全局管理员验证以简化操作)`,
-                placeholder: '请输入管理员密码以确认删除',
+                title: '管理员验证',
+                subtitle: `请输入管理员密码以确认删除 ${keysToDelete.length} 个项目`,
+                placeholder: '请输入管理员密码',
                 buttonText: '确认删除',
                 iconClass: 'fa-exclamation-triangle',
                 action: performBatchDelete
             });
         }
     } catch (error) {
-        if (error.message !== '用户取消验证') {
+        if (error.message !== '用户取消验证' && error.message !== 'User cancelled') {
             showNotification(`批量删除操作失败: ${error.message}`, 'error');
         } else {
             showNotification('批量删除操作已取消', 'info');
@@ -1198,11 +1412,13 @@ document.addEventListener('authSuccess', () => {
     console.log("验证成功 (authSuccess event received)，开始加载根目录文件列表...");
     fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
+    fetchAndBuildFolderTree();
 });
 document.addEventListener('authRestored', () => {
     console.log("从 localStorage 恢复验证状态 (authRestored event received)，开始加载根目录文件列表...");
     fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
+    fetchAndBuildFolderTree();
 });
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
@@ -1393,11 +1609,122 @@ style.textContent = `
             opacity: 1;
         }
     }
+    .confirmation-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(5px);
+        z-index: 10002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.3s ease;
+    }
+    .confirmation-modal-overlay.closing {
+        animation: fadeOut 0.3s ease forwards;
+    }
+    .confirmation-modal {
+        background: var(--background);
+        padding: 2rem;
+        border-radius: 16px;
+        box-shadow: var(--shadow-heavy);
+        max-width: 420px;
+        width: 90%;
+        text-align: center;
+        animation: slideUp 0.3s ease;
+    }
+    .confirmation-modal-overlay.closing .confirmation-modal {
+        animation: slideDown 0.3s ease forwards;
+    }
+    .confirmation-modal h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: var(--text-primary);
+    }
+    .confirmation-modal p {
+        margin-top: 0;
+        margin-bottom: 2rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+    }
+    .confirmation-buttons {
+        display: flex;
+        gap: 1rem;
+    }
+    .confirmation-buttons button {
+        flex: 1;
+        padding: 0.8rem 1rem;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    .confirm-btn-cancel {
+        background: var(--background-dark);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+    .confirm-btn-cancel:hover {
+        background: var(--border-color);
+    }
+    .confirm-btn {
+        color: white;
+        background: var(--primary-gradient);
+    }
+     .confirm-btn:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+    .confirm-btn-danger {
+        background: var(--accent-gradient);
+    }
+    .confirm-btn-danger:hover {
+        box-shadow: 0 4px 10px rgba(231, 76, 60, 0.3);
+    }
+    .prompt-input-container {
+        margin-bottom: 1.5rem;
+    }
+    #prompt-input {
+        width: 100%;
+        padding: 0.8rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--background-alt);
+        color: var(--text-primary);
+        font-size: 1rem;
+        box-sizing: border-box;
+        text-align: center;
+    }
+    #prompt-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(46, 139, 87, 0.1);
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes slideDown { from { transform: translateY(0); opacity: 1; } to { transform: translateY(20px); opacity: 0; } }
 `;
 document.head.appendChild(style);
 async function renameFile(key, currentName, isDirectory) {
-    const newName = prompt(`为 "${currentName}" 输入新名称:`, currentName);
-    if (!newName || newName === currentName) {
+    let newName;
+    try {
+        newName = await showPrompt({
+            title: '重命名',
+            message: `为 "${currentName}" 输入新名称:`,
+            initialValue: currentName,
+            confirmText: '重命名'
+        });
+    } catch (error) {
+        showNotification('重命名操作已取消', 'info');
+        return;
+    }
+    if (!newName || newName.trim() === "" || newName === currentName) {
+        showNotification('名称无效或未改变，已取消操作。', 'info');
         return;
     }
     const performRename = async (adminPass) => {
@@ -1434,7 +1761,7 @@ async function renameFile(key, currentName, isDirectory) {
         } else {
             await createAuthModal({
                 title: '确认重命名',
-                subtitle: `确定要将 "${currentName}" 重命名为 "${newName}" 吗？ (提示: 可在右上角进行全局管理员验证以简化操作)`,
+                subtitle: `确定要将 "${currentName}" 重命名为 "${newName}" 吗？`,
                 placeholder: '请输入管理员密码以确认',
                 buttonText: '确认重命名',
                 iconClass: 'fa-pencil-alt',

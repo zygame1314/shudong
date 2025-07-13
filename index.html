@@ -35,7 +35,7 @@
                         <i class="fas fa-user"></i>
                         <span>口令验证</span>
                     </button>
-                    <button id="admin-login-button" class="secondary-btn" style="display: none; margin-left: 10px;">
+                    <button id="admin-login-button" class="primary-btn" style="display: none; margin-left: 10px;">
                         <i class="fas fa-user-shield"></i>
                         <span>管理员验证</span>
                     </button>
@@ -71,10 +71,19 @@
 
     <main class="main-content">
         <div class="container">
-            <section id="file-explorer" class="file-explorer">
-                <div class="explorer-header">
-                    <div class="header-left">
-                        <h2 class="section-title">
+            <div class="explorer-container">
+                <aside id="folder-tree-container" class="folder-tree-container">
+                    <h3 class="section-title">
+                        <i class="fas fa-sitemap"></i> 文件夹导航
+                    </h3>
+                    <div id="folder-tree">
+                        <div class="loading-spinner" style="margin-top: 20px;"></div>
+                    </div>
+                </aside>
+                <section id="file-explorer" class="file-explorer">
+                    <div class="explorer-header">
+                        <div class="header-left">
+                            <h2 class="section-title">
                             <i class="fas fa-folder-open"></i>
                             文件资源库
                         </h2>
@@ -171,7 +180,8 @@
                         <span>上传资料</span>
                     </a>
                 </div>
-            </section>
+                </section>
+            </div>
         </div>
     </main>
 
@@ -221,7 +231,7 @@
             </div>
         </div>
     </div>
-    
+
     <script src="script.js"></script>
     <script src="auth.js"></script>
 </body>

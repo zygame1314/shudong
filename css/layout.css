@@ -75,8 +75,36 @@
     padding: 0 2rem;
 }
 
-.footer {
-    margin-top: 4rem;
+.explorer-container {
+    display: flex;
+    gap: 2rem;
+}
+
+.folder-tree-container {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--background-secondary);
+    padding: 1.5rem;
+    border-radius: var(--border-radius-large);
+    height: fit-content;
+    position: sticky;
+    top: 90px;
+}
+
+.folder-tree-container .section-title {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#file-explorer {
+    flex-grow: 1;
+}
+ 
+ .footer {
+     margin-top: 4rem;
     background: var(--text-primary);
     color: white;
     padding: 3rem 0 1rem;
@@ -254,4 +282,71 @@
 
 .file-list-container.grid-view .back-item .file-item {
     flex-direction: column;
+}
+
+.folder-tree-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.folder-tree-list .folder-tree-list {
+    padding-left: 20px;
+}
+
+.folder-tree-node {
+    margin-bottom: 4px;
+}
+
+.folder-tree-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: var(--border-radius-medium);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+    user-select: none;
+}
+
+.folder-tree-item:hover {
+    background-color: var(--background-hover);
+}
+
+.folder-tree-item.active {
+    background-color: var(--primary-color);
+    color: white;
+    font-weight: 500;
+}
+
+.folder-tree-item.active .folder-icon,
+.folder-tree-item.active .folder-toggle-icon {
+    color: white !important;
+}
+
+.folder-toggle-icon {
+    width: 16px;
+    text-align: center;
+    margin-right: 8px;
+    color: var(--text-secondary);
+    transition: transform var(--transition-fast);
+}
+
+.folder-toggle-icon.hidden {
+    visibility: hidden;
+}
+
+.folder-toggle-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.folder-icon {
+    margin-right: 8px;
+    color: var(--primary-color);
+}
+
+.folder-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.95rem;
 }
