@@ -81,7 +81,7 @@
 }
 
 .folder-tree-container {
-    width: 280px;
+    width: 400px;
     flex-shrink: 0;
     background: var(--background-secondary);
     padding: 1.5rem;
@@ -349,4 +349,69 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 0.95rem;
+}
+
+.sidebar-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 1.5rem 0;
+}
+
+#hot-folders-list {
+    margin-top: 1rem;
+}
+
+.hot-folders-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.hot-folder-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--border-radius-medium);
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.hot-folder-item:hover {
+    background-color: var(--background-hover);
+}
+
+.hot-folder-name {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.hot-folder-name .fa-folder {
+    color: var(--primary-color);
+}
+
+.hot-folder-downloads {
+    font-size: 0.9rem;
+    color: var(--accent-color);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.empty-state-small {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 1rem 0;
 }

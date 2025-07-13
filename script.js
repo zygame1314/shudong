@@ -16,6 +16,65 @@ const API_BASE_URL = 'https://shudong.zygame1314.site';
 const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
 const folderTreeElement = document.getElementById('folder-tree');
+const hotFoldersListElement = document.getElementById('hot-folders-list');
+
+async function fetchAndRenderHotFolders() {
+    const password = getAuthPassword();
+    if (!password || !hotFoldersListElement) return;
+
+    hotFoldersListElement.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
+
+    try {
+        const response = await fetch(`${FILES_API_URL}?action=getHotFolders`, {
+            headers: { 'Authorization': `Bearer ${password}` }
+        });
+        const result = await response.json();
+
+        if (response.ok && result.success && result.hotFolders) {
+            if (result.hotFolders.length === 0) {
+                hotFoldersListElement.innerHTML = '<p class="empty-state-small">暂无热门文件夹。</p>';
+                return;
+            }
+            
+            hotFoldersListElement.innerHTML = '';
+            const ul = document.createElement('ul');
+            ul.className = 'hot-folders-list';
+            
+            result.hotFolders.forEach(folder => {
+                const li = document.createElement('li');
+                li.className = 'hot-folder-item';
+                li.innerHTML = `
+                    <span class="hot-folder-name">
+                       <i class="fas fa-folder"></i>
+                       ${folder.name}
+                    </span>
+                    <span class="hot-folder-downloads">
+                        <i class="fas fa-fire"></i> ${folder.total_downloads}
+                    </span>
+                `;
+                li.addEventListener('click', () => {
+                    fetchAndDisplayFiles(folder.path);
+                    const folderLinks = document.querySelectorAll('.folder-tree-item');
+                    folderLinks.forEach(link => {
+                        link.classList.remove('active');
+                        if(link.querySelector('.folder-name').textContent === folder.name) {
+                            link.classList.add('active');
+                        }
+                    });
+                });
+                ul.appendChild(li);
+            });
+            hotFoldersListElement.appendChild(ul);
+
+        } else {
+            hotFoldersListElement.innerHTML = '<p class="empty-state-small">无法加载热门文件夹。</p>';
+            console.error('获取热门文件夹失败:', result.error);
+        }
+    } catch (error) {
+        hotFoldersListElement.innerHTML = '<p class="empty-state-small">加载热门文件夹时出错。</p>';
+        console.error('请求热门文件夹出错:', error);
+    }
+}
 
 async function fetchAndBuildFolderTree() {
     const password = getAuthPassword();
@@ -61,7 +120,7 @@ function renderFolderTree(tree, container) {
     container.innerHTML = '';
     const ul = document.createElement('ul');
     ul.className = 'folder-tree-list';
-    
+
     Object.keys(tree).sort().forEach(key => {
         const node = tree[key];
         const li = renderFolderNode(key, node, '');
@@ -80,9 +139,9 @@ function renderFolderNode(name, node, currentPath) {
     const nodeContent = document.createElement('div');
     nodeContent.className = 'folder-tree-item';
     nodeContent.innerHTML = `
-        &lt;i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"&gt;&lt;/i&gt;
-        &lt;i class="fas fa-folder folder-icon"&gt;&lt;/i&gt;
-        &lt;span class="folder-name"&gt;${name}&lt;/span&gt;
+        <i class="fas fa-chevron-right folder-toggle-icon ${hasChildren ? '' : 'hidden'}"></i>
+        <i class="fas fa-folder folder-icon"></i>
+        <span class="folder-name">${name}</span>
     `;
 
     nodeContent.addEventListener('click', (e) => {
@@ -95,7 +154,7 @@ function renderFolderNode(name, node, currentPath) {
             }
         }
         fetchAndDisplayFiles(fullPath);
-        
+
         document.querySelectorAll('.folder-tree-item.active').forEach(item => item.classList.remove('active'));
         nodeContent.classList.add('active');
     });
@@ -1413,12 +1472,14 @@ document.addEventListener('authSuccess', () => {
     fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
     fetchAndBuildFolderTree();
+    fetchAndRenderHotFolders();
 });
 document.addEventListener('authRestored', () => {
     console.log("从 localStorage 恢复验证状态 (authRestored event received)，开始加载根目录文件列表...");
     fetchAndDisplayFiles('', '', 1);
     fetchFileStats();
     fetchAndBuildFolderTree();
+    fetchAndRenderHotFolders();
 });
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();

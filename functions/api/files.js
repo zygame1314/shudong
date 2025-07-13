@@ -78,6 +78,38 @@ export async function onRequestGet({ request, env }) {
       });
     }
   }
+  if (action === 'getHotFolders') {
+    try {
+      const stmt = DB.prepare(`
+        SELECT
+          parent_path,
+          SUM(downloads) as total_downloads
+        FROM files
+        WHERE parent_path != '' AND is_directory = FALSE
+        GROUP BY parent_path
+        ORDER BY total_downloads DESC
+        LIMIT 5
+      `);
+      const { results } = await stmt.all();
+      
+      const hotFolders = results.map(row => ({
+        path: row.parent_path,
+        name: row.parent_path.endsWith('/') ? row.parent_path.slice(0, -1).split('/').pop() : row.parent_path.split('/').pop(),
+        total_downloads: row.total_downloads
+      }));
+
+      return new Response(JSON.stringify({ success: true, hotFolders: hotFolders }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    } catch (error) {
+      console.error('Error fetching hot folders from D1:', error);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to fetch hot folders.' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+  }
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
   const page = parseInt(url.searchParams.get('page')) || 1;
