@@ -25,6 +25,12 @@
     height: 70px;
 }
 
+.nav-icon-buttons {
+    gap: 1rem;
+    display: flex;
+    justify-content: space-between;
+}
+
 .logo-section {
     display: flex;
     align-items: center;
@@ -111,9 +117,9 @@
 #file-explorer {
     flex-grow: 1;
 }
- 
- .footer {
-     margin-top: 4rem;
+
+.footer {
+    margin-top: 4rem;
     background: var(--text-primary);
     color: white;
     padding: 3rem 0 1rem;
@@ -244,12 +250,6 @@
         display: flex;
     }
 
-    .nav-icon-buttons {
-        display: flex;
-        justify-content: space-between;
-        width: 100%;
-    }
-
     .nav-actions #auth-section {
         display: flex;
         flex-direction: column;
@@ -265,6 +265,7 @@
         display: inline-flex;
     }
 }
+
 .file-list-container.grid-view .file-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -399,6 +400,7 @@
     text-overflow: ellipsis;
     font-size: 0.95rem;
 }
+
 .folder-item-main {
     display: flex;
     align-items: center;
@@ -534,7 +536,7 @@
         transition: transform 0.3s ease-in-out;
         background: var(--background);
         border-radius: 0;
-        box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
         overflow-y: auto;
         padding-top: 6rem;
     }
@@ -542,7 +544,7 @@
     body.mobile-sidebar-visible .folder-tree-container {
         transform: translateX(0);
     }
-    
+
     body.mobile-sidebar-visible .mobile-sidebar-overlay {
         display: block;
         opacity: 1;
