@@ -58,10 +58,20 @@
     font-weight: 400;
 }
 
+.nav-actions-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
 .nav-actions {
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+#mobile-menu-toggle {
+    display: none;
 }
 
 .main-content {
@@ -213,9 +223,46 @@
     }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
     .nav-actions {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--background);
+        border-radius: var(--border-radius-large);
+        box-shadow: var(--shadow-large);
+        flex-direction: column;
+        align-items: stretch;
+        width: 200px;
+        padding: 1rem;
+        z-index: 100;
         gap: 0.5rem;
+    }
+
+    .nav-actions.active {
+        display: flex;
+    }
+
+    .nav-icon-buttons {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .nav-actions #auth-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .nav-actions #auth-section .primary-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    #mobile-menu-toggle {
+        display: inline-flex;
     }
 }
 .file-list-container.grid-view .file-list {
@@ -489,7 +536,7 @@
         border-radius: 0;
         box-shadow: 0 0 20px rgba(0,0,0,0.2);
         overflow-y: auto;
-        padding-top: 4rem;
+        padding-top: 6rem;
     }
 
     body.mobile-sidebar-visible .folder-tree-container {

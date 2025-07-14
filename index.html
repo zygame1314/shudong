@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/pages.css">
     <link rel="stylesheet" href="https://cdn.jsdmirror.com/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/css/shepherd.css"/>
 </head>
 
 <body>
@@ -29,20 +30,30 @@
                     <span class="sub-title">知识传承</span>
                 </div>
             </div>
-            <div class="nav-actions">
-                <button id="theme-toggle" class="icon-btn" title="切换主题">
-                    <i class="fas fa-moon"></i>
-                </button>
-                <div id="auth-section">
-                    <button id="login-button" class="primary-btn">
-                        <i class="fas fa-user"></i>
-                        <span>口令验证</span>
-                    </button>
-                    <button id="admin-login-button" class="primary-btn" style="display: none; margin-left: 10px;">
-                        <i class="fas fa-user-shield"></i>
-                        <span>管理员验证</span>
-                    </button>
+            <div class="nav-actions-container">
+                <div class="nav-actions">
+                    <div class="nav-icon-buttons">
+                        <button id="tutorial-btn" class="icon-btn" title="开始教程">
+                            <i class="fas fa-question-circle"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-btn" title="切换主题">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                    </div>
+                    <div id="auth-section">
+                        <button id="login-button" class="primary-btn">
+                            <i class="fas fa-user"></i>
+                            <span>口令验证</span>
+                        </button>
+                        <button id="admin-login-button" class="primary-btn" style="display: none;">
+                            <i class="fas fa-user-shield"></i>
+                            <span>管理员验证</span>
+                        </button>
+                    </div>
                 </div>
+                <button id="mobile-menu-toggle" class="icon-btn">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
             </div>
         </div>
     </nav>
@@ -246,6 +257,8 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/js/shepherd.min.js"></script>
+    <script src="tutorial.js"></script>
     <script src="script.js"></script>
     <script src="auth.js"></script>
 </body>

@@ -1581,6 +1581,10 @@ document.addEventListener('authSuccess', () => {
     fetchFileStats();
     fetchAndBuildFolderTree();
     fetchAndRenderHotFolders();
+    const uploadBtnLink = document.getElementById('upload-btn-link');
+    if (uploadBtnLink) {
+        uploadBtnLink.style.display = 'inline-flex';
+    }
 });
 document.addEventListener('authRestored', () => {
     console.log("从 localStorage 恢复验证状态 (authRestored event received)，开始加载根目录文件列表...");
@@ -1588,6 +1592,10 @@ document.addEventListener('authRestored', () => {
     fetchFileStats();
     fetchAndBuildFolderTree();
     fetchAndRenderHotFolders();
+    const uploadBtnLink = document.getElementById('upload-btn-link');
+    if (uploadBtnLink) {
+        uploadBtnLink.style.display = 'inline-flex';
+    }
 });
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
@@ -1603,6 +1611,18 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPaginationControls(null);
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
+    }
+
+    const tutorialBtn = document.getElementById('tutorial-btn');
+    if (tutorialBtn) {
+        tutorialBtn.addEventListener('click', () => {
+            if (typeof startTutorial === 'function') {
+                startTutorial();
+            } else {
+                console.error('Tutorial function not found.');
+                showNotification('无法加载教程，请刷新页面重试。', 'error');
+            }
+        });
     }
     if (fileListElement) {
         fileListElement.addEventListener('click', (event) => {
@@ -1727,6 +1747,22 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebar.addEventListener('click', (e) => {
             if (e.target.closest('.go-to-folder-btn') || e.target.closest('.hot-folder-item')) {
                 closeSidebar();
+            }
+        });
+    }
+
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const navActions = document.querySelector('.nav-actions');
+
+    if (mobileMenuToggle && navActions) {
+        mobileMenuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navActions.classList.toggle('active');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (navActions.classList.contains('active') && !navActions.contains(e.target) && !mobileMenuToggle.contains(e.target)) {
+                navActions.classList.remove('active');
             }
         });
     }
