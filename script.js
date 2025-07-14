@@ -379,7 +379,7 @@ async function downloadFile(fileKey, downloadBtn) {
     const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${encodeURIComponent(fileKey)}`;
     if (downloadBtn) {
         downloadBtn.disabled = true;
-        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 连接中...';
+        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="download-progress-text">连接中...</span>';
     }
     try {
         const response = await fetch(downloadUrl, {
@@ -397,6 +397,7 @@ async function downloadFile(fileKey, downloadBtn) {
             let loaded = 0;
             const chunks = [];
             const reader = response.body.getReader();
+            const progressTextElement = downloadBtn ? downloadBtn.querySelector('.download-progress-text') : null;
             while (true) {
                 const {
                     done,
@@ -407,11 +408,13 @@ async function downloadFile(fileKey, downloadBtn) {
                 }
                 chunks.push(value);
                 loaded += value.length;
-                if (totalSize && downloadBtn) {
-                    const percent = Math.floor((loaded / totalSize) * 100);
-                    downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 ${percent}%`;
-                } else if (downloadBtn) {
-                    downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 已下载 ${formatBytes(loaded)}`;
+                if (progressTextElement) {
+                    if (totalSize) {
+                        const percent = Math.floor((loaded / totalSize) * 100);
+                        progressTextElement.textContent = `下载中 ${percent}%`;
+                    } else {
+                        progressTextElement.textContent = `已下载 ${formatBytes(loaded)}`;
+                    }
                 }
             }
             const blob = new Blob(chunks);
@@ -1136,7 +1139,7 @@ async function handleBatchDownload() {
     }
     const downloadBtn = document.getElementById('batch-download-btn');
     downloadBtn.disabled = true;
-    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 获取链接...';
+    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="download-progress-text">获取链接...</span>';
     showNotification(`正在为 ${keysToDownload.length} 个项目生成下载链接...`, 'info');
     try {
         const response = await fetch(`${API_BASE_URL}/api/batch-download`, {
@@ -1158,9 +1161,15 @@ async function handleBatchDownload() {
         let downloadedCount = 0;
         let failedCount = 0;
         showNotification(`获取到 ${totalFiles} 个下载链接，开始下载...`, 'success');
-        downloadBtn.innerHTML = `<i class="fas fa-download"></i> 下载中 (0/${totalFiles})`;
+        const progressSpan = downloadBtn.querySelector('.download-progress-text');
+        downloadBtn.querySelector('i').className = 'fas fa-download';
+        if (progressSpan) {
+            progressSpan.textContent = `下载中 (0/${totalFiles})`;
+        }
         const downloadFileWithDelay = async (file, index) => {
+            const iconElement = downloadBtn.querySelector('i');
             try {
+                if (iconElement) iconElement.className = 'fas fa-spinner fa-spin';
                 const downloadUrl = `${API_BASE_URL}${file.urlPath}`;
                 const fileResponse = await fetch(downloadUrl, {
                     headers: {
@@ -1184,11 +1193,13 @@ async function handleBatchDownload() {
                         if (done) break;
                         chunks.push(value);
                         loaded += value.length;
-                        if (totalSize) {
-                            const percent = Math.floor((loaded / totalSize) * 100);
-                            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 (${downloadedCount + 1}/${totalFiles}) ${percent}%`;
-                        } else {
-                            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 下载中 (${downloadedCount + 1}/${totalFiles}) ${formatBytes(loaded)}`;
+                        if (progressSpan) {
+                            if (totalSize) {
+                                const percent = Math.floor((loaded / totalSize) * 100);
+                                progressSpan.textContent = `下载中 (${downloadedCount + 1}/${totalFiles}) ${percent}%`;
+                            } else {
+                                progressSpan.textContent = `下载中 (${downloadedCount + 1}/${totalFiles}) ${formatBytes(loaded)}`;
+                            }
                         }
                     }
                     const blob = new Blob(chunks);
@@ -1210,7 +1221,10 @@ async function handleBatchDownload() {
                 console.error(`下载文件 ${file.filename} 失败:`, e);
                 failedCount++;
             }
-            downloadBtn.innerHTML = `<i class="fas fa-download"></i> 下载中 (${downloadedCount}/${totalFiles})`;
+            if (iconElement) iconElement.className = 'fas fa-download';
+            if (progressSpan) {
+                progressSpan.textContent = `下载中 (${downloadedCount}/${totalFiles})`;
+            }
             return new Promise(resolve => setTimeout(resolve, 300));
         };
         for (let i = 0; i < filesToDownload.length; i++) {
