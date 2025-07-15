@@ -17,29 +17,23 @@ const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
 const folderTreeElement = document.getElementById('folder-tree');
 const hotFoldersListElement = document.getElementById('hot-folders-list');
-
 async function fetchAndRenderHotFolders() {
     const password = getAuthPassword();
     if (!password || !hotFoldersListElement) return;
-
     hotFoldersListElement.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
-
     try {
         const response = await fetch(`${FILES_API_URL}?action=getHotFolders`, {
             headers: { 'Authorization': `Bearer ${password}` }
         });
         const result = await response.json();
-
         if (response.ok && result.success && result.hotFolders) {
             if (result.hotFolders.length === 0) {
                 hotFoldersListElement.innerHTML = '<p class="empty-state-small">暂无热门文件夹。</p>';
                 return;
             }
-
             hotFoldersListElement.innerHTML = '';
             const ul = document.createElement('ul');
             ul.className = 'hot-folders-list';
-
             result.hotFolders.forEach(folder => {
                 const li = document.createElement('li');
                 li.className = 'hot-folder-item';
@@ -65,7 +59,6 @@ async function fetchAndRenderHotFolders() {
                 ul.appendChild(li);
             });
             hotFoldersListElement.appendChild(ul);
-
         } else {
             hotFoldersListElement.innerHTML = '<p class="empty-state-small">无法加载热门文件夹。</p>';
             console.error('获取热门文件夹失败:', result.error);
@@ -75,19 +68,15 @@ async function fetchAndRenderHotFolders() {
         console.error('请求热门文件夹出错:', error);
     }
 }
-
 async function fetchAndBuildFolderTree() {
     const password = getAuthPassword();
     if (!password || !folderTreeElement) return;
-
     folderTreeElement.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
-
     try {
         const response = await fetch(`${FILES_API_URL}?action=listAllDirs`, {
             headers: { 'Authorization': `Bearer ${password}` }
         });
         const result = await response.json();
-
         if (response.ok && result.success) {
             const tree = buildTree(result.directories);
             renderFolderTree(tree, folderTreeElement);
@@ -100,7 +89,6 @@ async function fetchAndBuildFolderTree() {
         console.error('请求文件夹树出错:', error);
     }
 }
-
 function buildTree(paths) {
     const tree = {};
     paths.forEach(path => {
@@ -115,12 +103,10 @@ function buildTree(paths) {
     });
     return tree;
 }
-
 function renderFolderTree(tree, container) {
     container.innerHTML = '';
     const ul = document.createElement('ul');
     ul.className = 'folder-tree-list';
-
     Object.keys(tree).sort().forEach(key => {
         const node = tree[key];
         const li = renderFolderNode(key, node, '');
@@ -128,14 +114,11 @@ function renderFolderTree(tree, container) {
     });
     container.appendChild(ul);
 }
-
 function renderFolderNode(name, node, currentPath) {
     const li = document.createElement('li');
     li.className = 'folder-tree-node';
-
     const fullPath = currentPath ? `${currentPath}${name}/` : `${name}/`;
     const hasChildren = Object.keys(node).length > 0;
-
     const nodeContent = document.createElement('div');
     nodeContent.className = 'folder-tree-item';
     nodeContent.innerHTML = `
@@ -148,7 +131,6 @@ function renderFolderNode(name, node, currentPath) {
             <i class="fas fa-arrow-right"></i>
         </button>
     `;
-
     nodeContent.addEventListener('click', () => {
         if (hasChildren) {
             const sublist = li.querySelector('.folder-tree-list');
@@ -158,7 +140,6 @@ function renderFolderNode(name, node, currentPath) {
             }
         }
     });
-
     const goToBtn = nodeContent.querySelector('.go-to-folder-btn');
     goToBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -166,9 +147,7 @@ function renderFolderNode(name, node, currentPath) {
         document.querySelectorAll('.folder-tree-item.active').forEach(item => item.classList.remove('active'));
         nodeContent.classList.add('active');
     });
-
     li.appendChild(nodeContent);
-
     if (hasChildren) {
         const sublist = document.createElement('ul');
         sublist.className = 'folder-tree-list';
@@ -179,7 +158,6 @@ function renderFolderNode(name, node, currentPath) {
         });
         li.appendChild(sublist);
     }
-
     return li;
 }
 let currentPrefix = '';
@@ -531,8 +509,8 @@ async function previewFile(fileKey, fileName, fileSize) {
     previewModal.classList.add('visible');
     previewLoader.style.display = 'flex';
     previewIframe.style.display = 'none';
-    const existingImage = previewModal.querySelector('.preview-image');
-    if (existingImage) existingImage.remove();
+    const existingImageWrapper = previewModal.querySelector('.preview-image-wrapper');
+    if (existingImageWrapper) existingImageWrapper.remove();
     const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
     if (existingVideoWrapper) existingVideoWrapper.remove();
     const existingTextWrapper = previewModal.querySelector('.preview-text-wrapper');
@@ -579,10 +557,14 @@ async function previewFile(fileKey, fileName, fileSize) {
             } else {
                 const previewUrl = data.url;
                 if (isImagePreview) {
+                    const previewContent = previewIframe.parentElement;
+                    const imageWrapper = document.createElement('div');
+                    imageWrapper.className = 'preview-image-wrapper';
+                    imageWrapper.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary);';
                     const img = document.createElement('img');
                     img.src = previewUrl;
                     img.className = 'preview-image';
-                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none; margin: auto;';
+                    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: none;';
                     img.onload = () => {
                         hideLoader();
                         img.style.display = 'block';
@@ -591,7 +573,8 @@ async function previewFile(fileKey, fileName, fileSize) {
                         hideLoader();
                         showNotification('图片加载失败', 'error');
                     };
-                    previewIframe.parentElement.appendChild(img);
+                    imageWrapper.appendChild(img);
+                    previewContent.appendChild(imageWrapper);
                 } else if (isVideoPreview) {
                     const previewContent = previewIframe.parentElement;
                     const videoWrapper = document.createElement('div');
@@ -695,7 +678,6 @@ function showConfirmation({
         });
     });
 }
-
 function showPrompt({
     title,
     message,
@@ -755,7 +737,6 @@ function showPrompt({
         });
     });
 }
-
 function showNotification(message, type = 'info') {
     let container = document.getElementById('notification-container');
     if (!container) {
@@ -1252,7 +1233,6 @@ async function handleBatchMove() {
         showNotification('没有选择任何项目', 'info');
         return;
     }
-
     let destinationPath;
     try {
         destinationPath = await showDirectoryPicker(keysToMove);
@@ -1260,17 +1240,14 @@ async function handleBatchMove() {
         showNotification('移动操作已取消', 'info');
         return;
     }
-
     const performBatchMove = async (adminPass) => {
         const password = getAuthPassword();
         if (!password) {
             throw new Error("无法移动：未获取到验证口令。请重新验证。");
         }
-
         let successCount = 0;
         let errorCount = 0;
         const errors = [];
-
         for (const key of keysToMove) {
             try {
                 const response = await fetch(`${FILES_API_URL}`, {
@@ -1297,14 +1274,12 @@ async function handleBatchMove() {
                 errors.push(`- ${key.split('/').pop()}: ${e.message}`);
             }
         }
-
         if (errorCount > 0) {
             const errorMessage = `移动完成，${successCount}个成功, ${errorCount}个失败。<br>${errors.join('<br>')}`;
             showNotification(errorMessage, 'error');
         } else {
             showNotification(`成功移动了 ${successCount} 个项目`, 'success');
         }
-
         if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
         if (directoryCache[destinationPath]) delete directoryCache[destinationPath];
         selectedItems.clear();
@@ -1312,7 +1287,6 @@ async function handleBatchMove() {
             if (isSelectionMode) toggleSelectionMode();
         });
     };
-
     try {
         const adminPassword = getAdminPassword();
         if (adminPassword) {
@@ -1626,7 +1600,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
-
     const tutorialBtn = document.getElementById('tutorial-btn');
     if (tutorialBtn) {
         tutorialBtn.addEventListener('click', () => {
@@ -1693,9 +1666,9 @@ document.addEventListener('DOMContentLoaded', () => {
             previewModal.classList.remove('visible');
             document.body.style.overflow = '';
             previewIframe.src = '';
-            const existingImage = previewModal.querySelector('.preview-image');
-            if (existingImage) {
-                existingImage.remove();
+            const existingImageWrapper = previewModal.querySelector('.preview-image-wrapper');
+            if (existingImageWrapper) {
+                existingImageWrapper.remove();
             }
             const existingVideoWrapper = previewModal.querySelector('.preview-video-wrapper');
             if (existingVideoWrapper) {
@@ -1719,15 +1692,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
     const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
     const sidebar = document.getElementById('folder-tree-container');
-
     if (mobileSidebarToggle && sidebar) {
         const overlay = document.createElement('div');
         overlay.className = 'mobile-sidebar-overlay';
         document.body.appendChild(overlay);
-
         const setIcon = (isOpen) => {
             const icon = mobileSidebarToggle.querySelector('i');
             if (icon) {
@@ -1735,12 +1705,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.classList.toggle('fa-bars', !isOpen);
             }
         };
-
         const closeSidebar = () => {
             document.body.classList.remove('mobile-sidebar-visible');
             setIcon(false);
         };
-
         const toggleSidebar = () => {
             const isOpen = document.body.classList.contains('mobile-sidebar-visible');
             if (isOpen) {
@@ -1750,30 +1718,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 setIcon(true);
             }
         };
-
         mobileSidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleSidebar();
         });
-
         overlay.addEventListener('click', closeSidebar);
-
         sidebar.addEventListener('click', (e) => {
             if (e.target.closest('.go-to-folder-btn') || e.target.closest('.hot-folder-item')) {
                 closeSidebar();
             }
         });
     }
-
     const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
     const navActions = document.querySelector('.nav-actions');
-
     if (mobileMenuToggle && navActions) {
         mobileMenuToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             navActions.classList.toggle('active');
         });
-
         document.addEventListener('click', (e) => {
             if (navActions.classList.contains('active') && !navActions.contains(e.target) && !mobileMenuToggle.contains(e.target)) {
                 navActions.classList.remove('active');
@@ -2003,7 +1965,6 @@ async function moveItem(key, currentName, isDirectory) {
         showNotification('移动操作已取消', 'info');
         return;
     }
-
     const performMove = async (adminPass) => {
         const password = getAuthPassword();
         if (!password) {
@@ -2032,7 +1993,6 @@ async function moveItem(key, currentName, isDirectory) {
         if (directoryCache[destinationPath]) delete directoryCache[destinationPath];
         fetchAndDisplayFiles(currentPrefix, '', currentPage);
     };
-
     try {
         const adminPassword = getAdminPassword();
         if (adminPassword) {
@@ -2127,7 +2087,6 @@ function showDirectoryPicker(itemsToMove = []) {
         if (!password) {
             return reject(new Error("需要验证"));
         }
-
         const modalOverlay = document.createElement('div');
         modalOverlay.className = 'confirmation-modal-overlay';
         modalOverlay.innerHTML = `
@@ -2147,33 +2106,26 @@ function showDirectoryPicker(itemsToMove = []) {
             </div>
         `;
         document.body.appendChild(modalOverlay);
-
         const treeContainer = modalOverlay.querySelector('#directory-picker-tree');
         const confirmBtn = modalOverlay.querySelector('.confirm-btn');
         let selectedPath = null;
-
         const renderTree = (tree, container) => {
             const ul = document.createElement('ul');
             ul.className = 'folder-tree-list';
-
             const rootNode = renderNode('根目录', tree, '', true, true);
             ul.appendChild(rootNode);
-
             container.innerHTML = '';
             container.appendChild(ul);
         };
-
         const renderNode = (name, node, path, isRoot = false, isLast = false) => {
             const li = document.createElement('li');
             li.className = 'folder-tree-node';
             if (isLast) {
                 li.classList.add('is-last');
             }
-
             const fullPath = isRoot ? '' : `${path}${name}/`;
             const children = isRoot ? node : node;
             const hasChildren = Object.keys(children).length > 0;
-
             const nodeContent = document.createElement('div');
             nodeContent.className = 'folder-tree-item';
             nodeContent.dataset.path = fullPath;
@@ -2183,12 +2135,10 @@ function showDirectoryPicker(itemsToMove = []) {
                 <span class="folder-name">${name}</span>
             `;
             li.appendChild(nodeContent);
-
             if (hasChildren) {
                 const sublist = document.createElement('ul');
                 sublist.className = 'folder-tree-list';
                 sublist.style.display = isRoot ? 'block' : 'none';
-
                 const childKeys = Object.keys(children).sort();
                 childKeys.forEach((key, index) => {
                     const isLastInSublist = index === childKeys.length - 1;
@@ -2198,14 +2148,11 @@ function showDirectoryPicker(itemsToMove = []) {
             }
             return li;
         };
-
         treeContainer.addEventListener('click', (e) => {
             const itemTarget = e.target.closest('.folder-tree-item');
             if (!itemTarget) return;
-
             const liNode = itemTarget.parentElement;
             const sublist = liNode.querySelector('.folder-tree-list');
-
             if (e.target.closest('.folder-toggle-icon') && sublist) {
                 e.stopPropagation();
                 const isExpanded = sublist.style.display === 'block';
@@ -2214,12 +2161,10 @@ function showDirectoryPicker(itemsToMove = []) {
             } else {
                 const path = itemTarget.dataset.path;
                 const isInvalidMove = itemsToMove.some(itemKey => path.startsWith(itemKey + '/'));
-
                 if (isInvalidMove) {
                     showNotification('不能将文件夹移动到其自身或其子文件夹中。', 'error');
                     return;
                 }
-
                 if (selectedPath !== null) {
                     const prevSelected = treeContainer.querySelector(`.folder-tree-item.active`);
                     if (prevSelected) prevSelected.classList.remove('active');
@@ -2230,7 +2175,6 @@ function showDirectoryPicker(itemsToMove = []) {
                 confirmBtn.textContent = `移动到 "${itemTarget.querySelector('.folder-name').textContent}"`;
             }
         });
-
         const closeModal = (value) => {
             modalOverlay.classList.add('closing');
             modalOverlay.addEventListener('animationend', () => {
@@ -2239,14 +2183,12 @@ function showDirectoryPicker(itemsToMove = []) {
                 else reject(new Error('User cancelled'));
             }, { once: true });
         };
-
         confirmBtn.addEventListener('click', () => closeModal(selectedPath));
         modalOverlay.querySelector('.confirm-btn-cancel').addEventListener('click', () => closeModal(null));
         modalOverlay.querySelector('.close-btn').addEventListener('click', () => closeModal(null));
         modalOverlay.addEventListener('click', (e) => {
             if (e.target === modalOverlay) closeModal(null);
         });
-
         try {
             const response = await fetch(`${FILES_API_URL}?action=listAllDirs`, {
                 headers: { 'Authorization': `Bearer ${password}` }
