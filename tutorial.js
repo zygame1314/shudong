@@ -40,16 +40,31 @@ function startTutorial() {
         }
     });
 
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const isMobileNav = mobileMenuToggle && getComputedStyle(mobileMenuToggle).display !== 'none';
+
     if (!isAuthenticated) {
-        steps.push({
-            id: 'auth',
-            title: '第一步：验证',
-            text: '要访问文件，你首先需要点击这里进行口令验证。这是保护我们共享资源的第一道防线！',
-            attachTo: {
-                element: '#login-button',
-                on: 'bottom'
-            }
-        });
+        if (isMobileNav) {
+            steps.push({
+                id: 'auth',
+                title: '第一步：验证',
+                text: '在移动端，验证、主题切换等功能都收纳在“更多”菜单里了。点开看看吧！',
+                attachTo: {
+                    element: '#mobile-menu-toggle',
+                    on: 'left'
+                }
+            });
+        } else {
+            steps.push({
+                id: 'auth',
+                title: '第一步：验证',
+                text: '要访问文件，你首先需要点击这里进行口令验证。这是保护我们共享资源的第一道防线！',
+                attachTo: {
+                    element: '#login-button',
+                    on: 'bottom'
+                }
+            });
+        }
     }
 
     steps.push({
@@ -114,7 +129,7 @@ function startTutorial() {
     steps.push({
         id: 'storage-limit',
         title: '关于存储容量 (´･ω･`)',
-        text: '我们有大约 10GB 的免费存储空间。这个进度条会显示当前的使用情况。这不是一个硬性限制，但如果超出了，站长（就是我啦）就要自掏腰包了... 所以请大家珍惜空间，上传真正有用的资料哦！',
+        text: '我们有大约 10GB 的免费存储空间。这个进度条会显示当前的使用情况。这不是硬性限制，但如果超出了，站长就要自掏腰包了... 所以请大家珍惜空间，上传真正有用的资料哦！',
         attachTo: {
             element: '.size-progress-container',
             on: 'bottom'
