@@ -69,6 +69,59 @@ function formatBytes(bytes, decimals = 2) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
+function compressImage(file, quality = 0.8) {
+    return new Promise((resolve) => {
+        if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+            resolve(file);
+            return;
+        }
+
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            canvas.toBlob(
+                (blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (!blob) {
+                        console.warn(`Canvas to Blob conversion failed for ${file.name}.`);
+                        resolve(file);
+                        return;
+                    }
+                    
+                    const newFileName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+                    const compressedFile = new File([blob], newFileName, {
+                        type: 'image/webp',
+                        lastModified: Date.now(),
+                    });
+                    
+                    const originalPath = file.webkitRelativePath || file._webkitRelativePath;
+                    if (originalPath) {
+                        const pathOnly = originalPath.substring(0, originalPath.lastIndexOf('/') + 1);
+                        compressedFile._webkitRelativePath = pathOnly + newFileName;
+                    }
+
+                    resolve(compressedFile);
+                },
+                'image/webp',
+                quality
+            );
+        };
+
+        img.onerror = (err) => {
+            URL.revokeObjectURL(img.src);
+            console.error(`Error loading image ${file.name}:`, err);
+            resolve(file);
+        };
+    });
+}
+
 function getFileIcon(fileName) {
     const ext = fileName.toLowerCase().split('.').pop();
     const iconMap = {
@@ -84,6 +137,7 @@ function getFileIcon(fileName) {
         'jpeg': 'fas fa-file-image',
         'png': 'fas fa-file-image',
         'gif': 'fas fa-file-image',
+        'webp': 'fas fa-file-image',
         'mp4': 'fas fa-file-video',
         'avi': 'fas fa-file-video',
         'mov': 'fas fa-file-video',
@@ -108,6 +162,7 @@ function validateFile(file) {
         'image/jpeg',
         'image/png',
         'image/gif',
+        'image/webp',
         'video/mp4',
         'video/avi',
         'video/quicktime',
@@ -257,23 +312,46 @@ function fillPasswordIfAuthenticated() {
         }
     }
 }
-function handleFileSelect(files) {
-    let allValid = true;
-    let totalSize = 0;
-    for (const file of files) {
-        totalSize += file.size;
-        const validation = validateFile(file);
-        if (!validation.valid) {
-            showNotification(`${file.name}: ${validation.error}`, 'error');
-            allValid = false;
+async function handleFileSelect(files) {
+    showNotification('正在处理文件，图片将被压缩...', 'info');
+    const originalFiles = Array.from(files);
+
+    try {
+        const processedFiles = await Promise.all(
+            originalFiles.map(file => compressImage(file))
+        );
+
+        let allValid = true;
+        for (const file of processedFiles) {
+            const validation = validateFile(file);
+            if (!validation.valid) {
+                showNotification(`${file.name}: ${validation.error}`, 'error');
+                allValid = false;
+            }
         }
-    }
-    if (!allValid) {
+
+        if (!allValid) {
+            clearSelectedFile();
+            return;
+        }
+
+        showSelectedFile(processedFiles);
+        
+        const originalSize = originalFiles.reduce((sum, f) => sum + f.size, 0);
+        const compressedSize = processedFiles.reduce((sum, f) => sum + f.size, 0);
+        const savedSize = originalSize - compressedSize;
+
+        if (savedSize > 1024) {
+            showNotification(`${processedFiles.length} 个文件处理完成，压缩节省 ${formatBytes(savedSize)}`, 'success');
+        } else {
+            showNotification(`${processedFiles.length} 个文件选择成功`, 'success');
+        }
+
+    } catch (error) {
+        console.error('文件处理失败:', error);
+        showNotification('处理文件时发生错误', 'error');
         clearSelectedFile();
-        return;
     }
-    showSelectedFile(files);
-    showNotification(`${files.length} 个文件选择成功`, 'success');
 }
 async function handleUpload(event) {
     event.preventDefault();
