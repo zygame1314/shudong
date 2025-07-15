@@ -89,11 +89,13 @@ export async function onRequest(context) {
     const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const signatureData = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(tokenPayload));
     const signature = btoa(String.fromCharCode(...new Uint8Array(signatureData))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const customDomain = env.CDN_DOMAIN;
+    const baseUrl = customDomain ? `https://${customDomain}` : new URL(request.url).origin;
     let previewUrl;
     if (isOfficePreview) {
-      previewUrl = `${new URL(request.url).origin}/api/download/${signature}/${expires}/${encodeURIComponent(key)}`;
+      previewUrl = `${baseUrl}/api/download/${signature}/${expires}/${encodeURIComponent(key)}`;
     } else {
-      previewUrl = `${new URL(request.url).origin}/api/download/${encodeURIComponent(key)}?token=${signature}&expires=${expires}`;
+      previewUrl = `${baseUrl}/api/download/${encodeURIComponent(key)}?token=${signature}&expires=${expires}`;
     }
     return new Response(JSON.stringify({ success: true, url: previewUrl }), {
       status: 200,
