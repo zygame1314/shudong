@@ -200,6 +200,25 @@ export async function onRequestGet({ request, env }) {
     });
   }
 }
+async function recursivelyFindKeys(startKey, DB) {
+  const allKeys = new Set([startKey]);
+  const dirsToScan = [startKey];
+  while (dirsToScan.length > 0) {
+    const currentDir = dirsToScan.shift();
+    if (!currentDir) continue;
+    const stmt = DB.prepare('SELECT key, is_directory FROM files WHERE parent_path = ?');
+    const { results } = await stmt.bind(currentDir).all();
+    if (results) {
+      for (const row of results) {
+        allKeys.add(row.key);
+        if (row.is_directory) {
+          dirsToScan.push(row.key);
+        }
+      }
+    }
+  }
+  return Array.from(allKeys);
+}
 export async function onRequestDelete({ request, env, waitUntil }) {
   if (!verifyPassword(request, env)) {
     return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
@@ -261,26 +280,11 @@ export async function onRequestDelete({ request, env, waitUntil }) {
         for (const itemKey of itemsToDelete) {
           const isDirectory = itemKey.endsWith('/');
           if (isDirectory) {
-            r2KeysToDelete.add(itemKey);
-            dbKeysToDelete.add(itemKey);
-            const batchSize = 1000;
-            let offset = 0;
-            while (true) {
-              const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ? LIMIT ? OFFSET ?');
-              const { results } = await stmt.bind(`${itemKey}%`, batchSize, offset).all();
-              if (results && results.length > 0) {
-                results.forEach(row => {
-                  r2KeysToDelete.add(row.key);
-                  dbKeysToDelete.add(row.key);
-                });
-                if (results.length < batchSize) {
-                  break;
-                }
-                offset += results.length;
-              } else {
-                break;
-              }
-            }
+            const keysToDeleteRecursively = await recursivelyFindKeys(itemKey, DB);
+            keysToDeleteRecursively.forEach(k => {
+              r2KeysToDelete.add(k);
+              dbKeysToDelete.add(k);
+            });
           } else {
             r2KeysToDelete.add(itemKey);
             dbKeysToDelete.add(itemKey);
