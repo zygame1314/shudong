@@ -91,13 +91,11 @@ export async function onRequestGet({ request, env }) {
         LIMIT 5
       `);
       const { results } = await stmt.all();
-      
       const hotFolders = results.map(row => ({
         path: row.parent_path,
         name: row.parent_path.endsWith('/') ? row.parent_path.slice(0, -1).split('/').pop() : row.parent_path.split('/').pop(),
         total_downloads: row.total_downloads
       }));
-
       return new Response(JSON.stringify({ success: true, hotFolders: hotFolders }), {
         status: 200,
         headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
@@ -263,13 +261,25 @@ export async function onRequestDelete({ request, env, waitUntil }) {
         for (const itemKey of itemsToDelete) {
           const isDirectory = itemKey.endsWith('/');
           if (isDirectory) {
-            const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ?');
-            const { results } = await stmt.bind(`${itemKey}%`).all();
-            if (results) {
-              results.forEach(row => {
-                r2KeysToDelete.add(row.key);
-                dbKeysToDelete.add(row.key);
-              });
+            r2KeysToDelete.add(itemKey);
+            dbKeysToDelete.add(itemKey);
+            const batchSize = 1000;
+            let offset = 0;
+            while (true) {
+              const stmt = DB.prepare('SELECT key FROM files WHERE key LIKE ? LIMIT ? OFFSET ?');
+              const { results } = await stmt.bind(`${itemKey}%`, batchSize, offset).all();
+              if (results && results.length > 0) {
+                results.forEach(row => {
+                  r2KeysToDelete.add(row.key);
+                  dbKeysToDelete.add(row.key);
+                });
+                if (results.length < batchSize) {
+                  break;
+                }
+                offset += results.length;
+              } else {
+                break;
+              }
             }
           } else {
             r2KeysToDelete.add(itemKey);
@@ -470,7 +480,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
     const itemName = itemToMove.name;
     const newBaseKey = `${destinationPath}${itemName}${isDirectory ? '/' : ''}`;
     if (newBaseKey === sourceKey) {
-        return new Response(JSON.stringify({ success: false, error: 'Source and destination are the same.' }), { status: 400, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
+      return new Response(JSON.stringify({ success: false, error: 'Source and destination are the same.' }), { status: 400, headers: addCorsHeaders({ 'Content-Type': 'application/json' }) });
     }
     const destCheckStmt = DB.prepare('SELECT key FROM files WHERE key = ?');
     const destExists = await destCheckStmt.bind(newBaseKey).first();
