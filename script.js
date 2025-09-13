@@ -862,7 +862,7 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
         </div>
         <div class="file-info">
             <div class="file-name">${item.name}</div>
-            ${isGlobalSearch && item.parent_path ? `<div class="file-path">${item.parent_path || '根目录'}</div>` : ''}
+            ${isGlobalSearch && typeof item.parent_path === 'string' ? `<div class="file-path clickable">${item.parent_path || '根目录'}</div>` : ''}
             ${!isDirectory ? `<div class="file-meta">${formatBytes(item.size)} • ${formatDate(item.uploaded)} • <i class="fas fa-download"></i> ${item.downloads || 0}</div>` : '<div class="file-meta">文件夹</div>'}
         </div>
     `;
@@ -907,6 +907,14 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     li.appendChild(checkbox);
     li.appendChild(fileItemDiv);
     li.appendChild(fileActionsDiv);
+    const pathElement = li.querySelector('.file-path.clickable');
+    if (pathElement) {
+        pathElement.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (searchInput) searchInput.value = '';
+            fetchAndDisplayFiles(item.parent_path);
+        });
+    }
     if (!isDirectory) {
         const previewBtn = fileActionsDiv.querySelector('.preview-button');
         if (previewBtn && !previewBtn.disabled) {
@@ -1538,7 +1546,7 @@ async function fetchAndDisplayFiles(prefix = '', searchTerm = '', page = 1) {
             currentTotalItems = result.totalItems;
             totalPages = result.totalPages;
             const currentLocalSearch = searchInput ? searchInput.value.trim() : '';
-            renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : currentLocalSearch, paginationData);
+            renderFileList(isGlobal ? '' : prefix, receivedData, isGlobal, isGlobal ? searchTerm.trim() : '', paginationData);
         } else {
             const errorMessage = result?.error || `HTTP 错误 ${response.status}`;
             console.error("获取文件列表失败:", errorMessage, result);
@@ -1760,8 +1768,6 @@ if (searchButton && searchInput) {
         const searchTerm = searchInput.value.trim();
         if (searchTerm === '' && isShowingSearchResults) {
             fetchAndDisplayFiles(currentPrefix, '', 1);
-        } else if (searchTerm === '' && !isShowingSearchResults) {
-            fetchAndDisplayFiles(currentPrefix, '', currentPage);
         }
     });
 }
@@ -1783,6 +1789,14 @@ style.textContent = `
         margin-top: 4px;
         overflow: hidden;
         text-overflow: ellipsis;
+        transition: color 0.2s ease;
+    }
+    .file-path.clickable {
+        cursor: pointer;
+        text-decoration: underline;
+    }
+    .file-path.clickable:hover {
+        color: var(--primary-color);
     }
     @keyframes particleFloat {
         0% { transform: translateY(0px) rotate(0deg); opacity: 1; }
