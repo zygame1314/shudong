@@ -101,7 +101,8 @@
     background: var(--background-secondary);
     padding: 1.5rem;
     border-radius: var(--border-radius-large);
-    height: fit-content;
+    max-height: 800px;
+    overflow-y: auto;
     position: sticky;
     top: 90px;
 }
@@ -530,6 +531,7 @@
         position: fixed;
         top: 0;
         left: 0;
+        max-height: none;
         height: 100%;
         max-width: 90%;
         z-index: 1002;
