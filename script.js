@@ -17,6 +17,9 @@ const FILES_API_URL = `${API_BASE_URL}/api/files`;
 const DOWNLOAD_API_BASE_URL = `${API_BASE_URL}/api/download`;
 const folderTreeElement = document.getElementById('folder-tree');
 const hotFoldersListElement = document.getElementById('hot-folders-list');
+const recentUploadsSection = document.getElementById('recent-uploads-section');
+const recentUploadsListElement = document.getElementById('recent-uploads-list');
+const refreshRecentUploadsBtn = document.getElementById('refresh-recent-uploads');
 async function fetchAndRenderHotFolders() {
     const password = getAuthPassword();
     if (!password || !hotFoldersListElement) return;
@@ -67,6 +70,141 @@ async function fetchAndRenderHotFolders() {
         hotFoldersListElement.innerHTML = '<p class="empty-state-small">加载热门文件夹时出错。</p>';
         console.error('请求热门文件夹出错:', error);
     }
+}
+async function fetchAndRenderRecentUploads(showToast = false) {
+    if (!recentUploadsListElement) return;
+    const password = getAuthPassword();
+    if (!password) {
+        recentUploadsListElement.innerHTML = '<li class="empty-state-small">请先完成验证以查看最近上传</li>';
+        return;
+    }
+    if (showToast) {
+        showNotification('正在刷新最近上传列表...', 'info');
+    }
+    recentUploadsListElement.innerHTML = `
+        <li class="loading-item">
+            <div class="loading-spinner"></div>
+            <span>正在加载最近上传...</span>
+        </li>
+    `;
+    if (refreshRecentUploadsBtn) {
+        refreshRecentUploadsBtn.disabled = true;
+        const refreshIcon = refreshRecentUploadsBtn.querySelector('i');
+        if (refreshIcon) refreshIcon.classList.add('fa-spin');
+    }
+    try {
+        const url = new URL(FILES_API_URL);
+        url.searchParams.set('action', 'recentUploads');
+        url.searchParams.set('limit', '6');
+        const response = await fetch(url.toString(), {
+            headers: {
+                'Authorization': `Bearer ${password}`
+            }
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        const files = Array.isArray(result.files) ? result.files : [];
+        if (files.length === 0) {
+            recentUploadsListElement.innerHTML = '<li class="empty-state-small">近期暂无新文件上传</li>';
+            return;
+        }
+        const fragment = document.createDocumentFragment();
+        files.forEach(file => {
+            const li = document.createElement('li');
+            li.className = 'recent-upload-item';
+            const iconClass = getFileIcon(file.name, false);
+            const parentPath = typeof file.parent_path === 'string' ? file.parent_path : '';
+            const normalizedPath = parentPath.endsWith('/') ? parentPath.slice(0, -1) : parentPath;
+            const folderName = normalizedPath ? normalizedPath.split('/').filter(Boolean).pop() || '根目录' : '根目录';
+            const folderLabel = parentPath && parentPath !== '' ? parentPath : '根目录';
+            const downloadsLabel = typeof file.downloads === 'number' ? file.downloads : 0;
+            li.innerHTML = `
+                <div class="recent-upload-info">
+                    <div class="recent-upload-name" title="${file.name}">
+                        <i class="${iconClass}"></i>
+                        <span>${file.name}</span>
+                    </div>
+                    <div class="recent-upload-meta">
+                        <span><i class="fas fa-database"></i> ${formatBytes(file.size)}</span>
+                        <span><i class="fas fa-clock"></i> ${formatDate(file.uploaded)}</span>
+                        <span><i class="fas fa-download"></i> ${downloadsLabel}</span>
+                    </div>
+                    <div class="recent-upload-meta">
+                        <span class="recent-upload-path" title="${folderLabel}">
+                            <i class="fas fa-folder-open"></i>
+                            ${folderName}
+                        </span>
+                    </div>
+                </div>
+                <div class="recent-upload-actions">
+                    <button class="recent-action-btn recent-preview-btn" title="预览文件">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="recent-action-btn recent-download-btn" title="下载文件">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="recent-action-btn recent-open-btn" title="定位到所在目录">
+                        <i class="fas fa-location-arrow"></i>
+                    </button>
+                </div>
+            `;
+            const previewBtn = li.querySelector('.recent-preview-btn');
+            if (previewBtn) {
+                previewBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    previewFile(file.key, file.name, file.size);
+                });
+            }
+            const downloadBtn = li.querySelector('.recent-download-btn');
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    downloadFile(file.key);
+                });
+            }
+            const openBtn = li.querySelector('.recent-open-btn');
+            if (openBtn) {
+                openBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (searchInput) searchInput.value = '';
+                    fetchAndDisplayFiles(parentPath || '');
+                });
+            }
+            const pathChip = li.querySelector('.recent-upload-path');
+            if (pathChip) {
+                pathChip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (searchInput) searchInput.value = '';
+                    fetchAndDisplayFiles(parentPath || '');
+                });
+            }
+            fragment.appendChild(li);
+        });
+        recentUploadsListElement.innerHTML = '';
+        recentUploadsListElement.appendChild(fragment);
+    } catch (error) {
+        console.error('加载最近上传失败:', error);
+        recentUploadsListElement.innerHTML = '';
+        const errorLi = document.createElement('li');
+        errorLi.className = 'empty-state-small';
+        errorLi.textContent = `加载最近上传失败：${error.message}`;
+        recentUploadsListElement.appendChild(errorLi);
+    } finally {
+        if (refreshRecentUploadsBtn) {
+            refreshRecentUploadsBtn.disabled = false;
+            const refreshIcon = refreshRecentUploadsBtn.querySelector('i');
+            if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        }
+    }
+}
+if (refreshRecentUploadsBtn) {
+    refreshRecentUploadsBtn.addEventListener('click', () => fetchAndRenderRecentUploads(true));
 }
 async function fetchAndBuildFolderTree() {
     const password = getAuthPassword();
@@ -167,6 +305,7 @@ const directoryCache = {};
 let isShowingSearchResults = false;
 let isSelectionMode = false;
 let selectedItems = new Set();
+let selectedDirectoryKeys = new Set();
 let currentPage = 1;
 let totalPages = 1;
 let itemsPerPage = 20;
@@ -845,6 +984,8 @@ function createFileListItem(item, isDirectory, isGlobalSearch = false) {
     const li = document.createElement('li');
     li.className = 'file-list-item';
     li.dataset.key = item.key;
+    li.dataset.itemType = isDirectory ? 'directory' : 'file';
+    item.isDirectory = !!isDirectory;
     li.style.opacity = '0';
     li.style.transform = 'translateY(20px)';
     const fileType = isDirectory ? 'folder' : getFileType(item.name);
@@ -977,6 +1118,7 @@ function toggleSelectionMode() {
             if (selectAllSpan) selectAllSpan.textContent = '全选';
         }
         selectedItems.clear();
+        selectedDirectoryKeys.clear();
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
         document.querySelectorAll('.file-list-item.selected').forEach(item => item.classList.remove('selected'));
     }
@@ -984,11 +1126,18 @@ function toggleSelectionMode() {
 }
 function handleItemSelection(checkbox, item) {
     const listItem = checkbox.closest('.file-list-item');
+    const isDirectory = !!item.isDirectory;
     if (checkbox.checked) {
         selectedItems.add(item.key);
+        if (isDirectory) {
+            selectedDirectoryKeys.add(item.key);
+        }
         listItem.classList.add('selected');
     } else {
         selectedItems.delete(item.key);
+        if (isDirectory) {
+            selectedDirectoryKeys.delete(item.key);
+        }
         listItem.classList.remove('selected');
     }
     updateSelectionToolbar();
@@ -1080,6 +1229,7 @@ async function handleBatchDelete() {
         });
         if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
         selectedItems.clear();
+        selectedDirectoryKeys.clear();
         fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
             if (isSelectionMode) toggleSelectionMode();
         });
@@ -1118,9 +1268,15 @@ async function handleBatchDelete() {
     }
 }
 async function handleBatchDownload() {
-    const keysToDownload = Array.from(selectedItems);
-    if (keysToDownload.length === 0) {
+    const selectedKeys = Array.from(selectedItems);
+    if (selectedKeys.length === 0) {
         showNotification('没有选择任何项目', 'info');
+        return;
+    }
+    const directoryKeys = selectedKeys.filter(key => selectedDirectoryKeys.has(key));
+    const fileKeys = selectedKeys.filter(key => !selectedDirectoryKeys.has(key));
+    if (fileKeys.length === 0) {
+        showNotification('批量下载暂不支持文件夹，请选择文件后重试。', 'warning');
         return;
     }
     const password = getAuthPassword();
@@ -1129,9 +1285,16 @@ async function handleBatchDownload() {
         return;
     }
     const downloadBtn = document.getElementById('batch-download-btn');
+    if (!downloadBtn) {
+        showNotification('未找到批量下载按钮，请刷新页面后重试。', 'error');
+        return;
+    }
     downloadBtn.disabled = true;
     downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="download-progress-text">获取链接...</span>';
-    showNotification(`正在为 ${keysToDownload.length} 个项目生成下载链接...`, 'info');
+    if (directoryKeys.length > 0) {
+        showNotification(`已跳过 ${directoryKeys.length} 个文件夹，暂不支持批量下载。`, 'info');
+    }
+    showNotification(`正在为 ${fileKeys.length} 个项目生成下载链接...`, 'info');
     try {
         const response = await fetch(`${API_BASE_URL}/api/batch-download`, {
             method: 'POST',
@@ -1140,7 +1303,7 @@ async function handleBatchDownload() {
                 'Authorization': `Bearer ${password}`,
             },
             body: JSON.stringify({
-                keys: keysToDownload
+                keys: fileKeys
             }),
         });
         const result = await response.json();
@@ -1293,6 +1456,7 @@ async function handleBatchMove() {
         if (directoryCache[currentPrefix]) delete directoryCache[currentPrefix];
         if (directoryCache[destinationPath]) delete directoryCache[destinationPath];
         selectedItems.clear();
+        selectedDirectoryKeys.clear();
         fetchAndDisplayFiles(currentPrefix, '', 1).then(() => {
             if (isSelectionMode) toggleSelectionMode();
         });
@@ -1579,6 +1743,7 @@ document.addEventListener('authSuccess', () => {
     fetchFileStats();
     fetchAndBuildFolderTree();
     fetchAndRenderHotFolders();
+    fetchAndRenderRecentUploads();
     const uploadBtnLink = document.getElementById('upload-btn-link');
     if (uploadBtnLink) {
         uploadBtnLink.style.display = 'inline-flex';
@@ -1590,6 +1755,7 @@ document.addEventListener('authRestored', () => {
     fetchFileStats();
     fetchAndBuildFolderTree();
     fetchAndRenderHotFolders();
+    fetchAndRenderRecentUploads();
     const uploadBtnLink = document.getElementById('upload-btn-link');
     if (uploadBtnLink) {
         uploadBtnLink.style.display = 'inline-flex';
@@ -1607,6 +1773,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBreadcrumb('');
     currentPrefix = '';
     renderPaginationControls(null);
+    fetchAndRenderRecentUploads();
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }

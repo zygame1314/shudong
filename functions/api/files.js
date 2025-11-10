@@ -108,6 +108,38 @@ export async function onRequestGet({ request, env }) {
       });
     }
   }
+  if (action === 'recentUploads') {
+    try {
+      const limitParam = parseInt(url.searchParams.get('limit'), 10);
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 20) : 6;
+      const stmt = DB.prepare(`
+        SELECT key, name, size, uploaded, parent_path, downloads
+        FROM files
+        WHERE is_directory = FALSE
+        ORDER BY uploaded DESC, key DESC
+        LIMIT ?
+      `);
+      const { results } = await stmt.bind(limit).all();
+      const files = results.map(row => ({
+        key: row.key,
+        name: row.name,
+        size: row.size,
+        uploaded: row.uploaded,
+        parent_path: row.parent_path,
+        downloads: row.downloads || 0
+      }));
+      return new Response(JSON.stringify({ success: true, files }), {
+        status: 200,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    } catch (error) {
+      console.error('Error fetching recent uploads from D1:', error);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to fetch recent uploads.' }), {
+        status: 500,
+        headers: addCorsHeaders({ 'Content-Type': 'application/json' }),
+      });
+    }
+  }
   const prefix = url.searchParams.get('prefix') || '';
   const searchTerm = url.searchParams.get('search');
   const page = parseInt(url.searchParams.get('page')) || 1;
