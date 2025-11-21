@@ -7,7 +7,7 @@ const addCorsHeaders = (headers = {}) => {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 };
-async function generateToken(key, secret, expiration = 3600) {
+async function generateToken(key, secret, expiration = 86400) {
   const expires = Date.now() + expiration * 1000;
   const tokenPayload = `${key}:${expires}`;
   const encoder = new TextEncoder();

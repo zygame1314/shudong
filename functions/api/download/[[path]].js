@@ -85,6 +85,8 @@ export async function onRequest(context) {
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
+    const filename = key.split('/').pop();
+    headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     const corsHeaders = addCorsHeaders();
     for (const [key, value] of Object.entries(corsHeaders)) {
         headers.set(key, value);
