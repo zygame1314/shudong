@@ -163,7 +163,7 @@ async function fetchAndRenderRecentUploads(showToast = false) {
                 downloadBtn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    downloadFile(file.key);
+                    downloadFile(file.key, downloadBtn);
                 });
             }
             const openBtn = li.querySelector('.recent-open-btn');
@@ -495,64 +495,33 @@ async function downloadFile(fileKey, downloadBtn) {
         showNotification("无法下载：未获取到验证口令。请重新验证。", 'error');
         return;
     }
-    const downloadUrl = `${DOWNLOAD_API_BASE_URL}/${encodeURIComponent(fileKey)}`;
+    let originalBtnContent = '';
     if (downloadBtn) {
+        originalBtnContent = downloadBtn.innerHTML;
         downloadBtn.disabled = true;
-        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="download-progress-text">连接中...</span>';
+        downloadBtn.classList.add('downloading');
+        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="download-progress-text">准备下载...</span>';
     }
     try {
-        const response = await fetch(downloadUrl, {
+        const previewApiUrl = `${API_BASE_URL}/api/preview?key=${encodeURIComponent(fileKey)}&expiresIn=86400`;
+        const response = await fetch(previewApiUrl, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${password}`,
             },
         });
-        if (response.ok) {
-            if (!response.body) {
-                throw new Error('ReadableStream not supported in this browser.');
-            }
-            const contentLength = response.headers.get('Content-Length');
-            const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
-            let loaded = 0;
-            const chunks = [];
-            const reader = response.body.getReader();
-            const progressTextElement = downloadBtn ? downloadBtn.querySelector('.download-progress-text') : null;
-            while (true) {
-                const {
-                    done,
-                    value
-                } = await reader.read();
-                if (done) {
-                    break;
-                }
-                chunks.push(value);
-                loaded += value.length;
-                if (progressTextElement) {
-                    if (totalSize) {
-                        const percent = Math.floor((loaded / totalSize) * 100);
-                        progressTextElement.textContent = `下载中 ${percent}%`;
-                    } else {
-                        progressTextElement.textContent = `已下载 ${formatBytes(loaded)}`;
-                    }
-                }
-            }
-            const blob = new Blob(chunks);
-            const url = window.URL.createObjectURL(blob);
+        const result = await response.json();
+        if (response.ok && result.success && result.url) {
             const a = document.createElement('a');
             a.style.display = 'none';
-            a.href = url;
+            a.href = result.url;
             a.download = fileKey.includes('/') ? fileKey.substring(fileKey.lastIndexOf('/') + 1) : fileKey;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
-            showNotification('文件下载完成', 'success');
+            showNotification('已开始下载，请查看右上角下载进度。', 'success');
         } else {
-            const errorResult = await response.json().catch(() => ({
-                error: `HTTP error ${response.status}`
-            }));
-            console.error(`下载 ${fileKey} 失败:`, errorResult);
-            showNotification(`下载失败: ${errorResult.error || response.statusText}`, 'error');
+            throw new Error(result.error || '获取下载链接失败');
         }
     } catch (error) {
         console.error(`下载 ${fileKey} 请求出错:`, error);
@@ -560,7 +529,12 @@ async function downloadFile(fileKey, downloadBtn) {
     } finally {
         if (downloadBtn) {
             downloadBtn.disabled = false;
-            downloadBtn.innerHTML = '<i class="fas fa-download"></i> 下载';
+            downloadBtn.classList.remove('downloading');
+            if (originalBtnContent) {
+                downloadBtn.innerHTML = originalBtnContent;
+            } else {
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i> 下载';
+            }
         }
     }
 }
@@ -667,6 +641,9 @@ async function previewFile(fileKey, fileName, fileSize) {
             apiUrl.searchParams.append('key', fileKey);
             if (isOfficePreview) {
                 apiUrl.searchParams.append('office', 'true');
+            }
+            if (isPdfPreview || isImagePreview || isVideoPreview) {
+                apiUrl.searchParams.append('inline', 'true');
             }
             if (isTxtPreview) {
                 apiUrl.searchParams.append('type', 'text');
@@ -1325,61 +1302,27 @@ async function handleBatchDownload() {
             try {
                 if (iconElement) iconElement.className = 'fas fa-spinner fa-spin';
                 const downloadUrl = `${API_BASE_URL}${file.urlPath}`;
-                const fileResponse = await fetch(downloadUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${password}`
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = downloadUrl;
+                a.download = file.filename;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    if (document.body.contains(a)) {
+                        document.body.removeChild(a);
                     }
-                });
-                if (fileResponse.ok) {
-                    if (!fileResponse.body) {
-                        throw new Error('ReadableStream not supported.');
-                    }
-                    const contentLength = fileResponse.headers.get('Content-Length');
-                    const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
-                    let loaded = 0;
-                    const chunks = [];
-                    const reader = fileResponse.body.getReader();
-                    while (true) {
-                        const {
-                            done,
-                            value
-                        } = await reader.read();
-                        if (done) break;
-                        chunks.push(value);
-                        loaded += value.length;
-                        if (progressSpan) {
-                            if (totalSize) {
-                                const percent = Math.floor((loaded / totalSize) * 100);
-                                progressSpan.textContent = `下载中 (${downloadedCount + 1}/${totalFiles}) ${percent}%`;
-                            } else {
-                                progressSpan.textContent = `下载中 (${downloadedCount + 1}/${totalFiles}) ${formatBytes(loaded)}`;
-                            }
-                        }
-                    }
-                    const blob = new Blob(chunks);
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = file.filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    downloadedCount++;
-                } else {
-                    console.error(`下载文件 ${file.filename} 失败:`, fileResponse.statusText);
-                    failedCount++;
-                }
+                }, 5000);
+                downloadedCount++;
             } catch (e) {
                 console.error(`下载文件 ${file.filename} 失败:`, e);
                 failedCount++;
             }
             if (iconElement) iconElement.className = 'fas fa-download';
             if (progressSpan) {
-                progressSpan.textContent = `下载中 (${downloadedCount}/${totalFiles})`;
+                progressSpan.textContent = `已触发 (${downloadedCount}/${totalFiles})`;
             }
-            return new Promise(resolve => setTimeout(resolve, 300));
+            return new Promise(resolve => setTimeout(resolve, 1500));
         };
         for (let i = 0; i < filesToDownload.length; i++) {
             await downloadFileWithDelay(filesToDownload[i], i);
