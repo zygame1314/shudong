@@ -85,8 +85,14 @@ export async function onRequest(context) {
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
+    const url = new URL(request.url);
+    const isInline = url.searchParams.get('inline') === 'true';
     const filename = key.split('/').pop();
-    headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    if (isInline) {
+        headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    } else {
+        headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    }
     const corsHeaders = addCorsHeaders();
     for (const [key, value] of Object.entries(corsHeaders)) {
         headers.set(key, value);

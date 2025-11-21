@@ -48,8 +48,9 @@ export async function onRequest(context) {
   }
   const url = new URL(request.url);
   const key = url.searchParams.get('key');
-  const isOfficePreview = url.searchParams.get('office') === 'true';
-  const previewType = url.searchParams.get('type');
+    const isOfficePreview = url.searchParams.get('office') === 'true';
+    const isInline = url.searchParams.get('inline') === 'true';
+    const previewType = url.searchParams.get('type');
   if (!key) {
     return new Response(JSON.stringify({
       success: false,
@@ -97,6 +98,9 @@ export async function onRequest(context) {
       previewUrl = `${baseUrl}/api/download/${signature}/${expires}/${encodeURIComponent(key)}`;
     } else {
       previewUrl = `${baseUrl}/api/download/${encodeURIComponent(key)}?token=${signature}&expires=${expires}`;
+      if (isInline) {
+        previewUrl += '&inline=true';
+      }
     }
     return new Response(JSON.stringify({ success: true, url: previewUrl }), {
       status: 200,
