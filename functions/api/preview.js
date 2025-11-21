@@ -81,7 +81,8 @@ export async function onRequest(context) {
         }),
       });
     }
-    const expires = Date.now() + 300 * 1000;
+    const expiresIn = url.searchParams.get('expiresIn') ? parseInt(url.searchParams.get('expiresIn')) : 300;
+    const expires = Date.now() + expiresIn * 1000;
     const tokenPayload = `${key}:${expires}`;
     const secret = env.PREVIEW_SECRET || 'default-secret';
     const encoder = new TextEncoder();
