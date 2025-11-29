@@ -119,6 +119,14 @@ export async function onRequestPost({ request, env, waitUntil }) {
           const name = parts.pop();
           const parent_path = parts.length > 0 ? parts.join('/') + '/' : '';
           await stmt.bind(filename, name, file.size, new Date().toISOString(), file.type, parent_path, false, 0).run();
+          
+          try {
+            await DB.prepare('UPDATE system_stats SET file_count = file_count + 1, total_size = total_size + ? WHERE id = 1')
+              .bind(file.size).run();
+          } catch (e) {
+            console.error('Error updating system_stats after upload:', e);
+          }
+
           console.log(`Successfully inserted file metadata for ${filename} into D1.`);
         } catch (dbError) {
           console.error(`Error during background database operations for ${filename}:`, dbError);

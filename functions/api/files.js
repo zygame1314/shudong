@@ -41,13 +41,13 @@ export async function onRequestGet({ request, env }) {
   const action = url.searchParams.get('action');
   if (action === 'stats') {
     try {
-      const stmt = DB.prepare('SELECT COUNT(*) as fileCount, SUM(size) as totalSize FROM files');
+      const stmt = DB.prepare('SELECT file_count as fileCount, total_size as totalSize FROM system_stats WHERE id = 1');
       const stats = await stmt.first();
       return new Response(JSON.stringify({
         success: true,
         stats: {
-          fileCount: stats.fileCount || 0,
-          totalSize: stats.totalSize || 0,
+          fileCount: stats?.fileCount || 0,
+          totalSize: stats?.totalSize || 0,
         }
       }), {
         status: 200,
@@ -329,11 +329,35 @@ export async function onRequestDelete({ request, env, waitUntil }) {
           console.log(`Successfully requested deletion of ${finalR2Keys.length} keys from R2.`);
         }
         if (finalDbKeys.length > 0) {
+          let totalSizeDeleted = 0;
+          let totalCountDeleted = 0;
           const batchSize = 100;
           for (let i = 0; i < finalDbKeys.length; i += batchSize) {
             const batch = finalDbKeys.slice(i, i + batchSize);
+            
+            try {
+              const placeholders = batch.map(() => '?').join(',');
+              const statsStmt = DB.prepare(`SELECT SUM(size) as batchSize, COUNT(*) as batchCount FROM files WHERE key IN (${placeholders}) AND is_directory = FALSE`);
+              const stats = await statsStmt.bind(...batch).first();
+              if (stats) {
+                totalSizeDeleted += (stats.batchSize || 0);
+                totalCountDeleted += (stats.batchCount || 0);
+              }
+            } catch (e) {
+              console.error('Error calculating stats for deletion batch:', e);
+            }
+
             const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${batch.map(() => '?').join(',')})`);
             await stmt.bind(...batch).run();
+          }
+          
+          if (totalCountDeleted > 0) {
+             try {
+               await DB.prepare('UPDATE system_stats SET file_count = MAX(0, file_count - ?), total_size = MAX(0, total_size - ?) WHERE id = 1')
+                  .bind(totalCountDeleted, totalSizeDeleted).run();
+             } catch (e) {
+               console.error('Error updating system_stats after deletion:', e);
+             }
           }
           console.log(`Successfully deleted ${finalDbKeys.length} keys from D1.`);
         }
