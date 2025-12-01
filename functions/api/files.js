@@ -148,12 +148,45 @@ export async function onRequestGet({ request, env }) {
   try {
     if (searchTerm) {
       console.log(`Performing global search for: "${searchTerm}", page: ${page}, limit: ${limit}`);
-      const searchCondition = `%${searchTerm}%`;
-      const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
-      const { total: totalItems } = await countStmt.bind(searchCondition).first();
+      let filesResults;
+      let totalItems;
+      const useFTS = searchTerm.length > 3;
+      let ftsSuccess = false;
+      if (useFTS) {
+        try {
+          const escapedTerm = searchTerm.replace(/"/g, '""');
+          const ftsQuery = `"${escapedTerm}"*`; 
+          const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files_fts WHERE name MATCH ?');
+          const countResult = await countStmt.bind(ftsQuery).first();
+          if (countResult) {
+             totalItems = countResult.total;
+             const searchStmt = DB.prepare(`
+                SELECT files.key, files.name, files.size, files.uploaded, files.is_directory, files.parent_path, files.downloads 
+                FROM files 
+                JOIN files_fts ON files.rowid = files_fts.rowid 
+                WHERE files_fts.name MATCH ? 
+                ORDER BY files.is_directory DESC, files.name ASC 
+                LIMIT ? OFFSET ?
+             `);
+             const { results } = await searchStmt.bind(ftsQuery, limit, offset).all();
+             filesResults = results;
+             ftsSuccess = true;
+          }
+        } catch (error) {
+          console.warn('FTS5 search attempt failed, falling back to LIKE. Error:', error);
+          ftsSuccess = false;
+        }
+      }
+      if (!useFTS || !ftsSuccess) {
+          const searchCondition = `%${searchTerm}%`;
+          const countStmt = DB.prepare('SELECT COUNT(*) as total FROM files WHERE name LIKE ?');
+          const { total } = await countStmt.bind(searchCondition).first();
+          totalItems = total;
+          const searchStmt = DB.prepare('SELECT key, name, size, uploaded, is_directory, parent_path, downloads FROM files WHERE name LIKE ? ORDER BY is_directory DESC, name ASC LIMIT ? OFFSET ?');
+          const { results } = await searchStmt.bind(searchCondition, limit, offset).all();
+          filesResults = results;
+      }
       const totalPages = Math.ceil(totalItems / limit);
-      const searchStmt = DB.prepare('SELECT key, name, size, uploaded, is_directory, parent_path, downloads FROM files WHERE name LIKE ? ORDER BY is_directory DESC, name ASC LIMIT ? OFFSET ?');
-      const { results: filesResults } = await searchStmt.bind(searchCondition, limit, offset).all();
       const responseItems = filesResults.map(f => ({
         key: f.key,
         name: f.name,
@@ -334,7 +367,6 @@ export async function onRequestDelete({ request, env, waitUntil }) {
           const batchSize = 100;
           for (let i = 0; i < finalDbKeys.length; i += batchSize) {
             const batch = finalDbKeys.slice(i, i + batchSize);
-            
             try {
               const placeholders = batch.map(() => '?').join(',');
               const statsStmt = DB.prepare(`SELECT SUM(size) as batchSize, COUNT(*) as batchCount FROM files WHERE key IN (${placeholders}) AND is_directory = FALSE`);
@@ -346,11 +378,9 @@ export async function onRequestDelete({ request, env, waitUntil }) {
             } catch (e) {
               console.error('Error calculating stats for deletion batch:', e);
             }
-
             const stmt = DB.prepare(`DELETE FROM files WHERE key IN (${batch.map(() => '?').join(',')})`);
             await stmt.bind(...batch).run();
           }
-          
           if (totalCountDeleted > 0) {
              try {
                await DB.prepare('UPDATE system_stats SET file_count = MAX(0, file_count - ?), total_size = MAX(0, total_size - ?) WHERE id = 1')
